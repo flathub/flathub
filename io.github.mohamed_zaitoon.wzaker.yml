@@ -1,0 +1,63 @@
+# WZAKER (وذكر) — Linux port of the original Windows app by AhmedMohamedH10.
+# Tauri + Rust. Upstream: https://github.com/mohamed-zaitoon/WZAKER
+#
+# Build locally:
+#   flatpak-builder --user --install --force-clean build-dir \
+#       io.github.mohamed_zaitoon.wzaker.yaml
+#
+# Regenerate cargo-sources.json after changing Cargo.lock:
+#   python3 flatpak-cargo-generator.py ../../src-tauri/Cargo.lock \
+#       -o cargo-sources.json
+
+app-id: io.github.mohamed_zaitoon.wzaker
+runtime: org.gnome.Platform
+runtime-version: "51"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: wzaker
+
+finish-args:
+  - --share=ipc
+  # The window places itself on screen and uses the X11 SHAPE input region so
+  # that the mouse passes through everything except the beads. There is no
+  # Wayland equivalent (see the README), so the app runs through XWayland.
+  - --socket=wayland
+  - --socket=x11
+  - --device=dri
+  # Reads raw wheel events from /dev/input to count scrolling in other apps.
+  - --device=all
+  # Saved ayah images go to the real ~/Pictures instead of the sandbox home.
+  - --filesystem=xdg-pictures
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --env=WEBKIT_DISABLE_COMPOSITING_MODE=0
+
+build-options:
+  strip: true
+
+modules:
+  # Provides libayatana-appindicator3 for the tray icon (Tauri "tray-icon").
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+
+  - name: wzaker
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/wzaker/cargo
+        CARGO_NET_OFFLINE: "true"
+    build-commands:
+      - cd wzaker-src/src-tauri && cargo build --release --offline --locked
+      - install -Dm755 wzaker-src/src-tauri/target/release/wzaker ${FLATPAK_DEST}/bin/wzaker-bin
+      - install -Dm755 wzaker-src/packaging/flatpak/wzaker.sh ${FLATPAK_DEST}/bin/wzaker
+      - install -Dm644 wzaker-src/packaging/flatpak/io.github.mohamed_zaitoon.wzaker.desktop ${FLATPAK_DEST}/share/applications/io.github.mohamed_zaitoon.wzaker.desktop
+      - install -Dm644 wzaker-src/packaging/flatpak/io.github.mohamed_zaitoon.wzaker.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.mohamed_zaitoon.wzaker.metainfo.xml
+      - install -Dm644 wzaker-src/packaging/flatpak/io.github.mohamed_zaitoon.wzaker.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/io.github.mohamed_zaitoon.wzaker.png
+    sources:
+      - type: archive
+        url: https://github.com/mohamed-zaitoon/WZAKER/archive/refs/tags/v3.6.4-linux2.tar.gz
+        sha256: 1c8bcb72602c4123b7b91f8c198ad49fd42ce252364a2633ca05f6a841a837d8
+        strip-components: 1
+        dest: wzaker-src
+      - cargo-sources.json
