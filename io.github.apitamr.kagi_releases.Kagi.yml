@@ -1,0 +1,64 @@
+# Kagi as a Flatpak, and the manifest Flathub builds. The source is
+# private, so it installs the release's Linux tarball as it is;
+# scripts/linux/flatpak.sh fills in its version and checksum. OpenSSH is
+# built in for SSH tunnels; the dump tools (pg_dump, mysqldump…) are not in
+# the sandbox, so dumping and restoring report them missing.
+#
+# Flathub verifies the id through the public kagi-releases repository.
+# The entry and icon the tarball carries keep the dev.kagi the windows
+# set, renamed here.
+app-id: io.github.apitamr.kagi_releases.Kagi
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: kagi
+rename-desktop-file: dev.kagi.desktop
+rename-icon: dev.kagi
+finish-args:
+  # Database servers, and the update check.
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  # GPUI draws with Vulkan.
+  - --device=dri
+  # Files come through the file chooser's portal. SSH tunnels sign with
+  # the user's agent, as Flathub allows no ~/.ssh. Omarchy's theme is a
+  # link from its config folder into its data folder.
+  - --socket=ssh-auth
+  - --filesystem=~/.config/omarchy:ro
+  - --filesystem=~/.local/share/omarchy:ro
+  # Saved passwords, in the Secret Service as outside the sandbox.
+  - --talk-name=org.freedesktop.secrets
+modules:
+  - name: openssh
+    buildsystem: simple
+    build-commands:
+      - ./configure --prefix=/app --sysconfdir=/app/etc/ssh
+      - make ssh
+      - install -Dm755 ssh /app/bin/ssh
+    sources:
+      - type: archive
+        url: https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-10.6p1.tar.gz
+        sha256: a9dc9565dffe8640f64d863cd29a32bc4a3dbdec0566a7fc44c5d6ee767d5f39
+  - name: kagi
+    buildsystem: simple
+    build-commands:
+      - cp -a usr/. /app/
+      - install -Dm644 io.github.apitamr.kagi_releases.Kagi.metainfo.xml -t /app/share/metainfo/
+    sources:
+      # The tarball's top folder is usr/ itself.
+      - type: archive
+        url: https://github.com/apitamr/kagi-releases/releases/download/v0.2.0/kagi-0.2.0-x86_64.tar.gz
+        sha256: 'd7a361ebc426e27ae508dd6a42255ce3e309cc9a2a9b3989c3f19af3ae88adca'
+        strip-components: 0
+        # Flathub's checker opens the pull request for each new release
+        # (the URL, checksum and the metainfo's release), to be merged.
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/apitamr/kagi-releases/releases/latest
+          version-query: .tag_name | ltrimstr("v")
+          url-query: .assets[] | select(.name == "kagi-" + $version + "-x86_64.tar.gz") | .browser_download_url
+          is-main-source: true
+      - type: file
+        path: io.github.apitamr.kagi_releases.Kagi.metainfo.xml
