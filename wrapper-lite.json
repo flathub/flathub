@@ -1,0 +1,129 @@
+{
+  "name": "wrapper-lite",
+  "modules": [
+    {
+      "name": "wrapper-lite-entry",
+      "buildsystem": "simple",
+      "build-commands": [
+        "install -Dm0755 start-wrapper-lite.sh /app/bin/start-wrapper-lite.sh"
+      ],
+      "sources": [
+        {
+          "type": "inline",
+          "dest-filename": "start-wrapper-lite.sh",
+          "contents": "#!/bin/sh\n# Flatpak entry point: provision a writable data disk from the read-only\n# template shipped at /app/bin/qemu/data.img, then hand off to the QEMU\n# launcher with QEMU_DATA_IMG pointing at the writable copy.\nset -e\n\nDATA_DIR=\"${XDG_DATA_HOME:-$HOME/.local/share}/wrapper-lite\"\nmkdir -p \"$DATA_DIR\"\n\nDATA_IMG=\"$DATA_DIR/data.img\"\nif [ ! -f \"$DATA_IMG\" ]; then\n    cp /app/bin/qemu/data.img \"$DATA_IMG\" 2>/dev/null || true\nfi\nchmod 0644 \"$DATA_IMG\" 2>/dev/null || true\n\nexport QEMU_DATA_IMG=\"$DATA_IMG\"\nexec /app/bin/wrapper-lite-qemu \"$@\"\n"
+        }
+      ]
+    },
+    {
+      "name": "dtc",
+      "buildsystem": "simple",
+      "build-commands": [
+        "meson setup build -Dprefix=/app -Dlibdir=lib -Dwerror=false -Dtools=false -Dpython=disabled -Dtests=false -Dyaml=disabled",
+        "ninja -C build",
+        "ninja -C build install"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://github.com/dgibson/dtc/archive/refs/tags/v1.7.2.tar.gz",
+          "sha256": "8f1486962f093f28a2f79f01c1fd82f144ef640ceabe555536d43362212ceb7c"
+        }
+      ]
+    },
+    {
+      "name": "libslirp",
+      "buildsystem": "simple",
+      "build-commands": [
+        "meson setup build -Dprefix=/app -Dlibdir=lib -Ddefault_library=shared",
+        "ninja -C build",
+        "ninja -C build install"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://gitlab.freedesktop.org/slirp/libslirp/-/archive/v4.7.0/libslirp-v4.7.0.tar.gz",
+          "sha256": "9398f0ec5a581d4e1cd6856b88ae83927e458d643788c3391a39e61b75db3d3b"
+        }
+      ]
+    },
+    {
+      "name": "qemu",
+      "buildsystem": "simple",
+      "build-commands": [
+        "python3 -m zipfile -e /run/build/qemu/distlib-0.4.3-py2.py3-none-any.whl pydeps",
+        "PKG_CONFIG_PATH=/app/lib/pkgconfig PYTHONPATH=$PWD/pydeps ./configure --prefix=/app --target-list=x86_64-softmmu --disable-docs --enable-fdt=system --enable-slirp --disable-gtk --extra-cflags=-I/app/include --extra-ldflags=-L/app/lib --disable-gcrypt --disable-nettle --disable-curses --disable-vnc --disable-sdl --disable-numa --disable-capstone --disable-vde --disable-vhost-net --disable-vhost-crypto --disable-vhost-kernel --disable-vhost-user --disable-vhost-user-blk-server --disable-vhost-vdpa --disable-fuse --disable-fuse-lseek --disable-libnfs --disable-tools --disable-werror",
+        "make -j$(nproc)",
+        "make install",
+        "mkdir -p /app/bin/qemu/bin",
+        "cp /app/bin/qemu-system-x86_64 /app/bin/qemu/bin/qemu-system-x86_64"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://download.qemu.org/qemu-8.2.8.tar.xz",
+          "sha256": "362263beb5e5c9eb56e389147e5376e4d6ccd245f9cb870f418d2493d4846c68"
+        },
+        {
+          "type": "file",
+          "url": "https://files.pythonhosted.org/packages/02/08/9c41fb51ab5b43eb21674aff13df270e8ba6c4b29c8624e328dc7a9482af/distlib-0.4.3-py2.py3-none-any.whl",
+          "sha256": "4b0ce306c966eb73bc3a7b6abad017c556dadd92c44701562cd528ac7fde4d5b"
+        }
+      ]
+    },
+    {
+      "name": "wrapper-lite-qemu",
+      "buildsystem": "simple",
+      "build-commands": [
+        "g++ -std=c++11 -O2 -Wall -o wrapper-lite-qemu wrapper-lite-qemu.cpp",
+        "install -Dm0755 wrapper-lite-qemu /app/bin/wrapper-lite-qemu"
+      ],
+      "sources": [
+        {
+          "type": "git",
+          "url": "https://github.com/jannuary/wrapper.git",
+          "branch": "lite",
+          "commit": "884384935368137233ba1129ceb53bd34bbc81fc"
+        }
+      ]
+    },
+    {
+      "name": "e2fsprogs",
+      "buildsystem": "autotools",
+      "config-opts": [
+        "--prefix=/app",
+        "--sbindir=/app/bin",
+        "--disable-libblkid",
+        "--disable-libuuid",
+        "--disable-uuidd",
+        "--disable-nls",
+        "--disable-rpath"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://mirrors.edge.kernel.org/pub/linux/kernel/people/tytso/e2fsprogs/v1.47.2/e2fsprogs-1.47.2.tar.xz",
+          "sha256": "08242e64ca0e8194d9c1caad49762b19209a06318199b63ce74ae4ef2d74e63c"
+        }
+      ]
+    },
+    {
+      "name": "wrapper-lite-assets",
+      "buildsystem": "simple",
+      "build-commands": [
+        "install -Dm0644 qemu/vmlinuz-lite-qemu /app/bin/qemu/vmlinuz-lite-qemu",
+        "install -Dm0644 qemu/lite-initramfs.cpio.gz /app/bin/qemu/lite-initramfs.cpio.gz",
+        "truncate -s 64M /app/bin/qemu/data.img",
+        "/app/bin/mke2fs -q -t ext4 -F /app/bin/qemu/data.img"
+      ],
+      "sources": [
+        {
+          "type": "git",
+          "url": "https://github.com/jannuary/wrapper.git",
+          "branch": "lite",
+          "commit": "884384935368137233ba1129ceb53bd34bbc81fc"
+        }
+      ]
+    }
+  ]
+}
