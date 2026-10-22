@@ -1,0 +1,73 @@
+app-id: io.github.realgarit.PKHeX-Avalonia
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+- org.freedesktop.Sdk.Extension.dotnet10
+command: PKHeX.Avalonia
+finish-args:
+- --share=ipc
+- --socket=x11
+- --device=dri
+- --share=network
+- --env=DOTNET_ROOT=/app/lib/dotnet
+build-options:
+  prepend-path: /usr/lib/sdk/dotnet10/bin
+  append-ld-library-path: /usr/lib/sdk/dotnet10/lib
+  env:
+    DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+    NUGET_PACKAGES: /run/build/pkhex-avalonia/nuget-cache
+modules:
+- name: dotnet
+  buildsystem: simple
+  build-commands:
+  - /usr/lib/sdk/dotnet10/bin/install.sh
+  - install -Dm644 /usr/lib/sdk/dotnet10/share/licenses/org.freedesktop.Sdk.Extension.dotnet10/dotnet-sdk/LICENSE.txt
+    /app/share/licenses/io.github.realgarit.PKHeX-Avalonia/dotnet/LICENSE.txt
+- name: pkhex-avalonia
+  buildsystem: simple
+  build-commands:
+  - |-
+    dotnet publish PKHeX.Avalonia/PKHeX.Avalonia.csproj \
+      -c Release -r linux-x64 --no-self-contained \
+      -p:PublishSingleFile=false -p:NuGetAudit=false \
+      -p:SourceRevisionId=4337f06881614b409c70429903013de8bf375cfc \
+      --source ./nuget-sources \
+      --source /usr/lib/sdk/dotnet10/nuget/packages \
+      -o /app/lib/pkhex-avalonia
+  - sed -i '/^appstreamcli validate --no-net /d' packaging/flatpak/install-assets.sh
+  - bash packaging/flatpak/install-assets.sh 1.88.0 4337f06881614b409c70429903013de8bf375cfc 2026-10-05
+  - |
+    python3 - <<'PY'
+    from pathlib import Path
+    from struct import unpack
+
+    icon = Path('PKHeX.Avalonia/Assets/Icons/icon.icns').read_bytes()
+    if icon[:4] != b'icns':
+        raise SystemExit('Invalid ICNS file')
+
+    offset = 8
+    while offset + 8 <= len(icon):
+        kind = icon[offset:offset + 4]
+        size = unpack('>I', icon[offset + 4:offset + 8])[0]
+        if size < 8 or offset + size > len(icon):
+            raise SystemExit('Invalid ICNS chunk')
+        if kind == b'ic08':
+            png = icon[offset + 8:offset + size]
+            if png[:8] != b'\x89PNG\r\n\x1a\n' or unpack('>II', png[16:24]) != (256, 256):
+                raise SystemExit('Expected original 256px PNG')
+            target = Path('/app/share/icons/hicolor/256x256/apps/io.github.realgarit.PKHeX-Avalonia.png')
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(png)
+            break
+        offset += size
+    else:
+        raise SystemExit('Original 256px icon not found')
+    PY
+  sources:
+  - type: archive
+    url: https://github.com/realgarit/PKHeX-Avalonia/archive/refs/tags/v1.88.0.tar.gz
+    sha256: 613571d37c4ebefb6892afe993c14ad7b981bc7d52c35b7f8f6125d14c62a2d6
+    strip-components: 1
+  - nuget-sources.json
