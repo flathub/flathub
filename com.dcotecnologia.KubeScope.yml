@@ -1,0 +1,58 @@
+app-id: com.dcotecnologia.KubeScope
+runtime: org.kde.Platform
+runtime-version: "6.11"
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: "6.11"
+command: kubescope
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # read-only access to the user's kubeconfig
+  - --filesystem=~/.kube:ro
+  # EKS kubeconfigs call `aws eks get-token`; the AWS CLI below needs the profiles,
+  # and write access for the SSO and token caches under ~/.aws
+  - --filesystem=~/.aws
+  # GKE, AKS, OCI and other contexts sign in with programs of the system (gcloud,
+  # gke-gcloud-auth-plugin, az, kubelogin, oci...), which the sandbox cannot see; the
+  # app asks the host to run them with `flatpak-spawn --host`
+  - --talk-name=org.freedesktop.Flatpak
+
+modules:
+  # the AWS CLI v1 and what it needs, from PyPI (made by flatpak-pip-generator)
+  - python3-awscli.json
+
+  # the Kubernetes Python client and what it needs, from PyPI
+  # (made by tools/flatpak_python_deps.py from uv.lock)
+  - python3-kubernetes.json
+
+  - name: kubescope
+    buildsystem: simple
+    build-commands:
+      # PySide6 comes with the base app, so its pin in pyproject is left to it
+      - >-
+        pip3 install --verbose --exists-action=i --no-index --no-deps
+        --no-build-isolation --prefix=${FLATPAK_DEST} .
+      - install -Dm644 com.dcotecnologia.KubeScope.desktop -t /app/share/applications
+      - install -Dm644 com.dcotecnologia.KubeScope.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 icon-256.png /app/share/icons/hicolor/256x256/apps/com.dcotecnologia.KubeScope.png
+      - install -Dm644 icon-512.png /app/share/icons/hicolor/512x512/apps/com.dcotecnologia.KubeScope.png
+    sources:
+      - type: git
+        url: https://github.com/dcotecnologia/kubescope.git
+        tag: v0.14.0
+        commit: 33ad92273c06e1470c8e5dea3f79f192032333fd
+      - type: file
+        path: com.dcotecnologia.KubeScope.desktop
+      - type: file
+        path: com.dcotecnologia.KubeScope.metainfo.xml
+      - type: file
+        path: icon-256.png
+      - type: file
+        path: icon-512.png
