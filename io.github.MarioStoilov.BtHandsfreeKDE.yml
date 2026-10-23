@@ -1,0 +1,91 @@
+# Flathub manifest for BT Handsfree. Identical to flatpak/ in the upstream repository
+# except that the app module builds from the pinned release tag instead of the working tree.
+id: io.github.MarioStoilov.BtHandsfreeKDE
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: '6.10'
+command: bt-handsfree-kde
+finish-args:
+  # Window system access for the dial and DTMF dialogs.
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  # Call control: PipeWire's telephony service on the session bus.
+  - --talk-name=org.pipewire.Telephony
+  # Single instance: the app owns its own ID on the session bus so a second launch (the
+  # tel: URI handler) hands its number to the running instance and exits. Flatpak grants
+  # owning the app ID by default, so no --own-name entry is needed (the linter rejects one).
+  # Contacts: the phonebook is pulled through obexd's Phonebook Access client. obexd
+  # writes the transfer file into the app's own cache directory, no extra filesystem
+  # access is needed.
+  - --talk-name=org.bluez.obex
+  # System tray (StatusNotifierItem) and call notifications with actions.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+  # Phone name, connection state and battery level from BlueZ on the system bus.
+  - --system-talk-name=org.bluez
+  # Local DTMF key tones on the dialpad, played through the PulseAudio API PipeWire serves.
+  # Call audio itself never passes through the app.
+  - --socket=pulseaudio
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+modules:
+  - python3-requirements.json
+  # pytest and its dependencies, present at build time only: the module's cleanup removes
+  # them from the installed app after the test run below.
+  - python3-test-requirements.json
+  # dbus-daemon, present at build time only: the integration tests start a private bus
+  # with it, and the KDE SDK ships libdbus but not the daemon. Documentation, test
+  # suites and the system-bus integrations (systemd, X11 autolaunch, LSMs, audit) are
+  # switched off; cleanup removes the whole module from the installed app.
+  - name: dbus-daemon
+    buildsystem: meson
+    cleanup:
+      - '*'
+    config-opts:
+      - -Ddoxygen_docs=disabled
+      - -Dducktype_docs=disabled
+      - -Dxml_docs=disabled
+      - -Dqt_help=disabled
+      - -Dmodular_tests=disabled
+      - -Dinstalled_tests=false
+      - -Dsystemd=disabled
+      - -Dx11_autolaunch=disabled
+      - -Dselinux=disabled
+      - -Dapparmor=disabled
+      - -Dlibaudit=disabled
+    sources:
+      - type: archive
+        url: https://dbus.freedesktop.org/releases/dbus/dbus-1.16.2.tar.xz
+        sha256: 0ba2a1a4b16afe7bceb2c07e9ce99a8c2c3508e5dec290dbb643384bd6beb7e2
+  - name: bt-handsfree-kde
+    buildsystem: simple
+    build-commands:
+      # Folded block scalars: the commands contain `: ` inside quotes, which a plain YAML
+      # scalar cannot hold.
+      # A working-tree source may carry the host's __pycache__ directories; they are
+      # dropped and the package is compiled afresh with the runtime's interpreter.
+      - >-
+        site_packages=$(python3 -c "import sysconfig; print(sysconfig.get_path('purelib', vars={'base': '${FLATPAK_DEST}'}))")
+        && install -d "${site_packages}"
+        && cp -r src/bt_handsfree_kde "${site_packages}/"
+        && find "${site_packages}/bt_handsfree_kde" -name __pycache__ -type d -exec rm -rf {} +
+        && python3 -m compileall -q "${site_packages}/bt_handsfree_kde"
+      # The test suite runs against the installed copy inside the build sandbox; the
+      # integration tests start their own dbus-daemon and Qt renders offscreen, so the
+      # build needs no session bus and no display. Bytecode writing is off so pytest's
+      # rewritten modules leave nothing behind in the installed app.
+      - >-
+        site_packages=$(python3 -c "import sysconfig; print(sysconfig.get_path('purelib', vars={'base': '${FLATPAK_DEST}'}))")
+        && PYTHONPATH="${site_packages}" PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -p no:cacheprovider tests
+      - install -Dm755 flatpak/bt-handsfree-kde ${FLATPAK_DEST}/bin/bt-handsfree-kde
+      - install -Dm644 data/${FLATPAK_ID}.desktop -t ${FLATPAK_DEST}/share/applications
+      - install -Dm644 data/${FLATPAK_ID}.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo
+      - install -Dm644 src/bt_handsfree_kde/resources/icon.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+    sources:
+      - type: git
+        url: https://github.com/MarioStoilov/BtHandsfreeKDE.git
+        tag: v0.1.0
+        commit: 31e8eaa40270b60036f1aeb9f9c4b62d769f7e0d
