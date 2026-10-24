@@ -1,0 +1,60 @@
+id: org.astermail.Mail
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node24
+command: aster-mail-desktop
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+modules:
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+
+  - name: aster-mail
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node24/bin
+      env:
+        CARGO_HOME: /run/build/aster-mail/cargo
+        CARGO_NET_OFFLINE: 'true'
+        npm_config_offline: 'true'
+        npm_config_cache: /run/build/aster-mail/flatpak-node/npm-cache
+        XDG_CACHE_HOME: /run/build/aster-mail/flatpak-node/cache
+    build-commands:
+      - npm ci --offline --ignore-scripts
+      - npx patch-package
+      - npx vite build
+      - node scripts/prepare_native_dist.mjs
+      - cargo --offline build --release --locked --manifest-path src-tauri/Cargo.toml
+      - install -Dm755 src-tauri/target/release/aster-mail-desktop -t /app/bin/
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/${FLATPAK_ID}.png
+      - install -Dm644 src-tauri/icons/256x256.png /app/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+      - install -Dm644 src-tauri/icons/512x512.png /app/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+      - install -Dm644 ${FLATPAK_ID}.desktop -t /app/share/applications/
+      - install -Dm644 ${FLATPAK_ID}.metainfo.xml -t /app/share/metainfo/
+    sources:
+      - type: git
+        url: https://github.com/Aster-Privacy/Aster-Mail.git
+        tag: v1.4.75
+        commit: d1c5e375a0f5bc03a34a415fde5a8c36f99a51ad
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/Aster-Privacy/Aster-Mail/releases/latest
+          tag-query: .tag_name
+          version-query: .tag_name | sub("^v"; "")
+          timestamp-query: .published_at
+      - cargo-sources.json
+      - node-sources.json
+      - type: file
+        path: org.astermail.Mail.desktop
+      - type: file
+        path: org.astermail.Mail.metainfo.xml
