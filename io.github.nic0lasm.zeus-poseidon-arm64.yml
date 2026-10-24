@@ -1,0 +1,127 @@
+# Paquet Flatpak (Flathub) : le programme et ses bibliothèques, comme l'AppImage (Unicorn 2.1,
+# FFmpeg réduit, innoextract), sur le runtime GNOME qui fournit SDL 2, Python 3 et GTK pour
+# zenity. Aucun fichier du jeu, et aucun accès aux fichiers du joueur : le sélecteur de zenity
+# passe par le portail de fichiers, d'où l'installateur GOG ou le dossier du jeu (GOG ou Steam)
+# choisis par le joueur. Flathub refuse l'accès direct aux dossiers de Steam : l'édition Steam
+# n'est donc pas trouvée toute seule, le joueur indique son dossier une fois.
+#
+# Copie pour Flathub du manifeste de https://github.com/nic0lasm/zeus-poseidon-arm64 (flatpak/),
+# les sources du programme prises au commit indiqué plus bas.
+id: io.github.nic0lasm.zeus-poseidon-arm64
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: zeus-poseidon
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/man
+  - '*.a'
+build-options:
+  env:
+    # innoextract demande CMake 2.8, que CMake 4 refuse.
+    CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+modules:
+  - name: unicorn
+    buildsystem: cmake-ninja
+    subdir: src
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DUNICORN_ARCH=x86
+      - -DUNICORN_BUILD_TESTS=OFF
+    sources:
+      - type: archive
+        url: https://files.pythonhosted.org/packages/b2/1b/b4248aa8422e86de690cf8e85cf8feae4c33405a097d1ebe71570bdaa6f5/unicorn-2.1.4.tar.gz
+        sha256: 00567a70e323f749b419cd86bee4f9115beab7ebba32194581c090cbb7c59cff
+
+  # Mêmes options que tools/build_ffmpeg.py : Bink et MP3 seulement, statique.
+  - name: ffmpeg
+    config-opts:
+      - --disable-everything
+      - --disable-programs
+      - --disable-doc
+      - --disable-network
+      - --disable-autodetect
+      - --disable-avdevice
+      - --disable-avfilter
+      - --enable-static
+      - --disable-shared
+      - --enable-pic
+      - --enable-demuxer=bink,mp3
+      - --enable-decoder=bink,binkaudio_rdft,binkaudio_dct,mp3float
+      - --enable-parser=mpegaudio
+      - --enable-protocol=file
+      - --enable-swscale
+      - --enable-swresample
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz
+        sha256: 8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e
+
+  # Boost statique, pour innoextract seulement.
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=/app --with-libraries=iostreams,filesystem,date_time,system,program_options
+      - ./b2 install -j${FLATPAK_BUILDER_N_JOBS} link=static variant=release threading=multi -sNO_LZMA=1
+        -sNO_ZSTD=1 cxxflags=-fPIC cflags=-fPIC
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://github.com/boostorg/boost/releases/download/boost-1.83.0/boost-1.83.0.tar.xz
+        sha256: c5a0688e1f0c05f354bbd0b32244d36085d9ffc9f932e8a18983a9908096f614
+
+  # Déballe l'installateur GOG ; le programme le trouve dans le PATH (/app/bin).
+  - name: innoextract
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBoost_USE_STATIC_LIBS=ON
+      - -DUSE_LTO=OFF
+    sources:
+      - type: archive
+        url: https://github.com/dscharrer/innoextract/releases/download/1.9/innoextract-1.9.tar.gz
+        sha256: 6344a69fc1ed847d4ed3e272e0da5998948c6b828cb7af39c6321aba6cf88126
+
+  # Sélecteur de fichiers et de dossiers du premier lancement (par le portail de fichiers).
+  - name: zenity
+    buildsystem: meson
+    config-opts:
+      - -Dmanpage=false
+      - -Dwebkitgtk=false
+    cleanup:
+      - /share/help
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/zenity/4.0/zenity-4.0.5.tar.xz
+        sha256: 8a3ffe7751bed497a758229ece07be9114ad4e46a066abae4e5f31d6da4c0e9e
+
+  - name: zeus-poseidon
+    buildsystem: simple
+    build-commands:
+      - cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DZEUS_FFMPEG=/app
+      - cmake --build build --target zeus-run
+      - install -Dm755 build/zeus-run /app/bin/zeus-poseidon
+      # Outils des packs de langue, lancés avec le python3 du runtime (les mêmes que dans l'AppImage).
+      - install -Dm644 -t /app/tools tools/cdimage.py tools/ishield.py tools/wise.py tools/build_install.py
+        tools/make_language_pack.py tools/make_pack_from_cds.py
+      - install -Dm644 LICENSE /app/share/doc/zeus-poseidon/LICENSE.txt
+      - install -Dm644 docs/third-party.md /app/share/doc/zeus-poseidon/THIRD-PARTY.md
+      - install -Dm644 flatpak/${FLATPAK_ID}.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 flatpak/${FLATPAK_ID}.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 flatpak/${FLATPAK_ID}.png /app/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+    sources:
+      - type: git
+        url: https://github.com/nic0lasm/zeus-poseidon-arm64.git
+        commit: 9d232e0346ec529754c3bff4ce991985537029d5
