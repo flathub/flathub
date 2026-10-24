@@ -1,0 +1,86 @@
+id: io.github.hananel_hazan.VibeSuperTonic
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet10
+command: vibesupertonic
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --share=network
+  - --device=dri
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+modules:
+  - name: vibesupertonic
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/dotnet10/bin
+      append-ld-library-path: /usr/lib/sdk/dotnet10/lib
+      env:
+        DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+        DOTNET_NOLOGO: '1'
+        DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+      no-debuginfo: true
+      strip: false
+    build-commands:
+      - |
+        cat > NuGet.Config <<EOF
+        <?xml version="1.0" encoding="utf-8"?>
+        <configuration>
+          <packageSources>
+            <clear />
+            <add key="flatpak" value="$PWD/nuget-sources" />
+          </packageSources>
+        </configuration>
+        EOF
+      - |
+        set -e
+        export NUGET_PACKAGES="$PWD/.nuget-packages" DOTNET_CLI_HOME="$PWD/.dotnet-home"
+        bash build/build-espeak.sh --sonic-src build/espeak-out/sonic
+        bash build/pack-tar.sh
+      - install -d /app/lib/vibesupertonic /app/bin
+      - cp -a dist/release-linux/VibeSuperTonic/. /app/lib/vibesupertonic/
+      - bash build/build-ffmpeg.sh --ffmpeg-src build/ffmpeg-out/ffmpeg-src --lame-src build/ffmpeg-out/lame-src
+          --work "$PWD/build/ffmpeg-out/work" --out /app/lib/vibesupertonic/ffmpeg
+      - |
+        cat > /app/bin/vibesupertonic <<'EOF'
+        #!/bin/sh
+        exec /app/lib/vibesupertonic/vibesupertonic-ui "$@"
+        EOF
+      - chmod 755 /app/bin/vibesupertonic
+      - ln -s ../lib/vibesupertonic/sandbox-setup.sh /app/bin/sandbox-setup.sh
+      - install -Dm644 dist/release-linux/VibeSuperTonic/desktop/io.github.hananel_hazan.VibeSuperTonic.desktop
+          /app/share/applications/io.github.hananel_hazan.VibeSuperTonic.desktop
+      - install -Dm644 dist/release-linux/VibeSuperTonic/desktop/io.github.hananel_hazan.VibeSuperTonic.metainfo.xml
+          /app/share/metainfo/io.github.hananel_hazan.VibeSuperTonic.metainfo.xml
+      - install -Dm644 dist/release-linux/VibeSuperTonic/desktop/io.github.hananel_hazan.VibeSuperTonic.png
+          /app/share/icons/hicolor/256x256/apps/io.github.hananel_hazan.VibeSuperTonic.png
+    sources:
+      - type: git
+        url: https://github.com/Hananel-Hazan/VibeSuperTonic.git
+        tag: v0.2.18
+        commit: 1e85f404f78019521605933ccc6ba9d31a5117f0
+      - type: git
+        url: https://github.com/espeak-ng/espeak-ng.git
+        commit: 724808c5a83f9ef95fdd0db886ba7ba537ff224a
+        disable-shallow-clone: true
+        dest: build/espeak-out/src
+      - type: git
+        url: https://github.com/waywardgeek/sonic.git
+        commit: fbf75c3d6d846bad3bb3d456cbc5d07d9fd8c104
+        dest: build/espeak-out/sonic
+      - type: git
+        url: https://github.com/FFmpeg/FFmpeg.git
+        tag: n8.1.3
+        commit: 1041abdc962f4cc4f394aa8de9dc5236c0c3b9e7
+        dest: build/ffmpeg-out/ffmpeg-src
+      - type: archive
+        url: https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz
+        sha256: ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e
+        dest: build/ffmpeg-out/lame-src
+      - nuget-sources.json
