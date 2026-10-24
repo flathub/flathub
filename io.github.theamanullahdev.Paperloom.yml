@@ -1,0 +1,132 @@
+# Paperloom Flatpak manifest.
+#
+# Built in CI by .github/workflows/package.yml (the `flatpak` job), which
+# first generates `cargo-sources.json` from Cargo.lock with
+# flatpak-builder-tools' flatpak-cargo-generator (Flatpak builds are
+# offline, so every crate has to be listed as a source). Locally:
+#
+#   python3 flatpak-cargo-generator.py ../../Cargo.lock -o cargo-sources.json
+#   flatpak-builder --user --install --force-clean build io.github.theamanullahdev.Paperloom.yml
+#
+# For Flathub, see "Publishing to Flathub" in README.md — the paperloom
+# module's `dir` source is swapped for a pinned git tag there.
+id: io.github.theamanullahdev.Paperloom
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: paperloom-gui
+
+finish-args:
+  - --share=ipc
+  - --share=network # online library + update check
+  - --socket=x11 # the X11 backend's desktop window (and XWayland)
+  - --socket=wayland # the layer-shell backend
+  - --socket=pulseaudio # only used when wallpaper audio is unmuted
+  - --device=dri # GPU video decode/render
+  - --filesystem=xdg-videos:ro # import from ~/Videos without a portal round trip
+  - --filesystem=xdg-config/autostart:create # "Start Paperloom when I log in"
+  - --talk-name=org.cinnamon.ScreenSaver # "pause when locked" on Cinnamon
+  - --talk-name=org.kde.StatusNotifierWatcher # tray icon
+
+# H.264/HEVC decoding: the runtime's own FFmpeg is patent-free only.
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    version: '25.08'
+    add-ld-path: '.'
+    autodownload: true
+    autodelete: false
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - '*.a'
+  - '*.la'
+
+modules:
+  - name: libass
+    buildsystem: meson
+    config-opts:
+      - -Dtest=false
+      - -Dprofile=false
+      - -Dfontconfig=enabled
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.17.3/libass-0.17.3.tar.xz
+        sha256: eae425da50f0015c21f7b3a9c7262a910f0218af469e22e2931462fed3c50959
+
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Dvulkan=disabled
+      - -Dopengl=enabled
+      - -Dglslang=disabled
+      - -Dshaderc=disabled
+      - -Dlcms=disabled
+      - -Dlibdovi=disabled
+      - -Dxxhash=disabled
+      - -Ddemos=false
+      - -Dtests=false
+    sources:
+      - type: git
+        url: https://code.videolan.org/videolan/libplacebo.git
+        tag: v7.349.0
+        commit: 9c4b6bbd7a1e223ffdd61affc4e5d463d42d4345
+
+  - name: mpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dlua=disabled
+      - -Djavascript=disabled
+      - -Dmanpage-build=disabled
+      - -Dhtml-build=disabled
+      - -Dpdf-build=disabled
+      - -Dvulkan=disabled
+      - -Dcdda=disabled
+      - -Ddvdnav=disabled
+      - -Dlibbluray=disabled
+      - -Dlibarchive=disabled
+      - -Drubberband=disabled
+      - -Duchardet=disabled
+      - -Dlcms2=disabled
+      - -Dzimg=disabled
+    sources:
+      - type: git
+        url: https://github.com/mpv-player/mpv.git
+        tag: v0.39.0
+        commit: 63329f68c61c3511f8d4ca2d57c972d0e703eb63
+
+  - name: paperloom
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/paperloom/cargo
+        PKG_CONFIG_PATH: /app/lib/pkgconfig
+        # libmpv was built into /app/lib by the mpv module above; the Rust
+        # linker doesn't search there on its own.
+        RUSTFLAGS: -L native=/app/lib
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --workspace
+      - install -Dm755 target/release/paperloom-gui /app/bin/paperloom-gui
+      - install -Dm755 target/release/paperloom-engine /app/bin/paperloom-engine
+      - install -Dm644 packaging/linux/paperloom.desktop /app/share/applications/io.github.theamanullahdev.Paperloom.desktop
+      - desktop-file-edit --set-icon=io.github.theamanullahdev.Paperloom --set-key=StartupWMClass --set-value=io.github.theamanullahdev.Paperloom /app/share/applications/io.github.theamanullahdev.Paperloom.desktop
+      - install -Dm644 packaging/icon.png /app/share/icons/hicolor/512x512/apps/io.github.theamanullahdev.Paperloom.png
+      - install -Dm644 packaging/linux/paperloom-share.xml /app/share/mime/packages/io.github.theamanullahdev.Paperloom.xml
+      - install -Dm644 packaging/flatpak/io.github.theamanullahdev.Paperloom.metainfo.xml /app/share/metainfo/io.github.theamanullahdev.Paperloom.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/theamanullahdev/paperloom.git
+        tag: v0.23.0
+        commit: abc7211160aaaff6ae544db38cb9a3bb86b60fd3
+        x-checker-data:
+          type: git
+          tag-pattern: ^(v[\d.]+)$
+      - cargo-sources.json
