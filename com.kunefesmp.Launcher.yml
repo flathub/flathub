@@ -1,0 +1,109 @@
+id: com.kunefesmp.Launcher
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk21
+command: kunefe-launcher
+
+finish-args:
+  # Login, mod/asset downloads and joining oyna.kunefesmp.com.tr
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+  # Game files, mods and skins live in $XDG_DATA_HOME/kunefesmp
+  - --filesystem=xdg-data/kunefesmp:create
+  - --env=JAVA_HOME=/app/jre
+
+modules:
+  # Bundled OpenJDK 21, so players do not need a system Java
+  - name: openjdk21
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/jre
+      - cp -r /usr/lib/sdk/openjdk21/jvm/openjdk-21/* /app/jre/
+    sources: []
+
+  # The freedesktop runtime ships Python 3.13 but not _tkinter;
+  # customtkinter (the launcher's GUI toolkit) needs it.
+  - name: tkinter
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=${FLATPAK_DEST} --no-build-isolation .
+    sources:
+      - type: git
+        url: https://github.com/iwalton3/tkinter-standalone.git
+        commit: 8e78e38ef0cceb44a3a0062e1c314a4ff3f981db
+    modules:
+      - name: tcl9.0
+        buildsystem: autotools
+        subdir: unix
+        config-opts:
+          - --disable-zipfs
+        post-install:
+          - chmod 755 ${FLATPAK_DEST}/lib/libtcl9.0.so
+        cleanup:
+          - /bin
+          - /lib/pkgconfig
+          - /man
+        sources:
+          - type: archive
+            url: https://prdownloads.sourceforge.net/tcl/tcl9.0.2-src.tar.gz
+            sha256: e074c6a8d9ba2cddf914ba97b6677a552d7a52a3ca102924389a05ccb249b520
+            x-checker-data:
+              type: html
+              url: https://sourceforge.net/projects/tcl/rss
+              pattern: <link>(https://sourceforge.net/.+/tcl(9\.[\d\.]*\d)-src.tar.gz)/download
+
+      - name: tk9.0
+        buildsystem: autotools
+        subdir: unix
+        config-opts:
+          - --disable-zipfs
+          - --with-tcl=${FLATPAK_DEST}/lib
+        post-install:
+          - chmod 755 ${FLATPAK_DEST}/lib/libtcl9tk9.0.so
+        cleanup:
+          - /bin
+          - /lib/pkgconfig
+          - /man
+        sources:
+          - type: archive
+            url: https://prdownloads.sourceforge.net/tcl/tk9.0.2-src.tar.gz
+            sha256: 76fb852b2f167592fe8b41aa6549ce4e486dbf3b259a269646600e3894517c76
+            x-checker-data:
+              type: html
+              url: https://sourceforge.net/projects/tcl/rss
+              pattern: <link>(https://sourceforge.net/.+/tk(9\.[\d\.]*\d)-src.tar.gz)/download
+
+  # Python dependencies (generated with flatpak-pip-generator)
+  - python3-requirements.json
+
+  - name: kunefe-launcher
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 launcher.py /app/bin/launcher.py
+      - install -Dm755 kunefe-launcher.sh /app/bin/kunefe-launcher
+      - install -Dm644 com.kunefesmp.Launcher.desktop /app/share/applications/com.kunefesmp.Launcher.desktop
+      - install -Dm644 com.kunefesmp.Launcher.metainfo.xml /app/share/metainfo/com.kunefesmp.Launcher.metainfo.xml
+      - install -Dm644 flatpak/com.kunefesmp.Launcher.png /app/share/icons/hicolor/256x256/apps/com.kunefesmp.Launcher.png
+      - |
+        mkdir -p /app/share/kunefesmp
+        for d in resourcepacks skins; do
+          if [ -d "$d" ]; then cp -r "$d" /app/share/kunefesmp/; fi
+        done
+    sources:
+      - type: git
+        url: https://github.com/Kubbemsi/kunefe-launcher.git
+        tag: v4.6
+      # These three files come from the submission PR, so the packaging can be
+      # fixed without a new upstream tag:
+      - type: file
+        path: com.kunefesmp.Launcher.desktop
+      - type: file
+        path: com.kunefesmp.Launcher.metainfo.xml
+      - type: file
+        path: kunefe-launcher.sh
