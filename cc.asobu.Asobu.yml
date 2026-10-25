@@ -1,0 +1,50 @@
+# Asobu as a Flatpak, for Flathub — and through it Discover, GNOME Software and SteamOS.
+#
+# This repackages the Linux tarball from Asobu's own GitHub release rather than compiling: the
+# release build is the one that carries the CurseForge key, which a public Flathub build has no
+# way to be given. Everything comes out of that one file — the app, its desktop entry, icons and
+# AppStream metadata — so a release is all an update needs, and Flathub's external data checker
+# (x-checker-data below) opens that update by itself whenever a new release appears.
+#
+# Data lives in the sandbox's own folder, ~/.var/app/cc.asobu.Asobu/data/asobu, so no access to
+# the home folder is asked for. The Downloads folder is readable so that a mod only its author's
+# page may serve can be picked up from there once the browser has fetched it.
+
+id: cc.asobu.Asobu
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: asobu
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=dri
+  # The tray, where Asobu waits while a game runs.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --filesystem=xdg-download:ro
+
+modules:
+  - name: asobu
+    buildsystem: simple
+    build-commands:
+      - install -d /app/lib /app/bin /app/share/icons
+      - tar -xzf Asobu-linux-x64.tar.gz -C /app/lib
+      # The tarball says it is a tarball; inside a Flatpak the app knows by FLATPAK_ID instead.
+      - rm -f /app/lib/asobu/package-type
+      - ln -s /app/lib/asobu/Asobu.App /app/bin/asobu
+      - install -Dm644 /app/lib/asobu/cc.asobu.Asobu.desktop -t /app/share/applications
+      - sed -i 's|/usr/bin/asobu|asobu|g' /app/share/applications/cc.asobu.Asobu.desktop
+      - install -Dm644 /app/lib/asobu/cc.asobu.Asobu.metainfo.xml -t /app/share/metainfo
+      - cp -r /app/lib/asobu/icons/hicolor /app/share/icons/
+    sources:
+      - type: file
+        url: https://github.com/Slavik-85/asobu/releases/download/v0.1.45/Asobu-linux-x64.tar.gz
+        sha256: 68c23618c05ceab4dc92425e6f5ff08198701f6b038f943f1ebbe306f1418ca5
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/Slavik-85/asobu/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: .assets[] | select(.name == "Asobu-linux-x64.tar.gz") | .browser_download_url
