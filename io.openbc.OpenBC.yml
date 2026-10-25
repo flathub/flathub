@@ -1,7 +1,6 @@
 # Flatpak manifest used by `scripts/build.sh -p lin -s flatpak`.
-# UNTESTED scaffold: adjust runtime-version to the KDE runtime installed on your machine
-# (`flatpak list --runtime | grep org.kde.Platform`). Builds inside the sandbox with network access
-# (fine for local bundles; Flathub would need vendored cargo sources instead).
+# For Flathub/offline builds, generate cargo-sources.json from the pinned
+# open-bc Cargo.lock with flatpak-cargo-generator before building.
 app-id: io.openbc.OpenBC
 runtime: org.kde.Platform
 runtime-version: '6.10'
@@ -22,17 +21,28 @@ modules:
     buildsystem: cmake-ninja
     build-options:
       append-path: /usr/lib/sdk/rust-stable/bin
-      build-args:
-        - --share=network
       env:
         CARGO_HOME: /run/build/openbc/cargo
+        CARGO_NET_OFFLINE: 'true'
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
+      - -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+      - -DFETCHCONTENT_SOURCE_DIR_CORROSION=/run/build/openbc/corrosion-src
     sources:
-      - type: dir
-        path: ../..
-        skip:        # keep the source checksum stable so flatpak-builder can cache-hit
-          - build
-          - target
-          - .git
-          - .flatpak-builder
+      # 1. App source pinned to the v1.0.3 release.
+      # Replace the commit placeholder with the verified 40-character tag target SHA.
+      - type: git
+        url: https://github.com/devopsnextgenx/open-bc.git
+        tag: v1.0.3
+        commit: 40f521273a56a2dde538c52f8cf0925d17cf8e66
+
+      # 2. Offline Rust dependencies generated from this release's Cargo.lock.
+      - cargo-sources.json
+
+      # 3. Local Corrosion checkout prevents FetchContent from cloning at build time.
+      # Replace the commit placeholder with the verified 40-character tag target SHA.
+      - type: git
+        url: https://github.com/corrosion-rs/corrosion.git
+        tag: v0.5.0
+        commit: REPLACE_WITH_VERIFIED_40_CHARACTER_CORROSION_SHA
+        dest: corrosion-src
