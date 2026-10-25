@@ -1,0 +1,75 @@
+# Manifest do SixteeN para o Flathub — o par de arquivos a colar na raiz do
+# fork do flathub/flathub (branch criada a partir de `new-pr`) é este aqui e
+# o cargo-sources.json gerado por gerar-cargo-sources.py.
+#
+# Diferenças para o flatpak de publicação própria
+# (packaging/flatpak/dev.ticianocorral.sixteen.yml): aqui o build NÃO usa
+# rede (regra do Flathub) — as dependências vêm do cargo-sources.json
+# (crates.io com sha256, incluindo o SDL embutido nos crates sdl3-src/
+# sdl3-image-src/sdl3-mixer-src que o feature vendored-sdl compila) e o
+# rustc/cargo vêm da extensão rust-stable do runtime (sem rustup/curl).
+id: io.github.ticianocorral.sixteen
+runtime: org.freedesktop.Platform
+runtime-version: "26.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: sixteen
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  # Network: RetroAchievements (login/conquistas/badges) e o download do
+  # core snes9x na primeira execução — este vem do asset da release do
+  # próprio projeto no GitHub e é aceito somente com o SHA-256 batendo com
+  # o hash embutido no binário (ver crates/app/src/core_update.rs). O
+  # self-update do app fica desabilitado dentro do Flatpak: quem atualiza
+  # é o próprio Flathub.
+  - --share=network
+  # dri = GPU (render SDL3); udev = gamepads via evdev/hidraw.
+  - --device=dri
+  - --device=udev
+  # Nenhum acesso a filesystem além do XDG_DATA_HOME do sandbox: o app só
+  # lê/grava em ~/.var/app/io.github.ticianocorral.sixteen/data/SixteeN
+  # (roms/, saves/, core/...). ROMs de outras pastas entram copiadas para
+  # roms/ — futuramente via portal XDG (SDL_ShowOpenFileDialog), sem
+  # permissão estática.
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - "*.a"
+  - "*.la"
+modules:
+  - name: sixteen
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        # O repo tem rust-toolchain.toml (pedindo rustfmt/clippy); o cargo
+        # do SDK não é shim de rustup e ignora o arquivo — a variável é
+        # cinto de segurança caso a extensão embarque shims.
+        RUSTUP_TOOLCHAIN: stable
+        CARGO_NET_OFFLINE: "true"
+    build-commands:
+      - cargo build --release --offline --bin sixteen --features sixteen-platform/vendored-sdl
+      - install -Dm755 target/release/sixteen -t /app/bin/
+      - install -Dm644 packaging/flatpak/io.github.ticianocorral.sixteen.desktop -t /app/share/applications/
+      - install -Dm644 packaging/flatpak/io.github.ticianocorral.sixteen.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 packaging/linux/sixteen.png -t /app/share/icons/hicolor/256x256/apps/io.github.ticianocorral.sixteen.png
+      - install -Dm644 packaging/linux/sixteen-512.png -t /app/share/icons/hicolor/512x512/apps/io.github.ticianocorral.sixteen.png
+      - install -Dm644 packaging/linux/sixteen-1024.png -t /app/share/icons/hicolor/1024x1024/apps/io.github.ticianocorral.sixteen.png
+      - install -Dm644 LICENSE -t /app/share/licenses/io.github.ticianocorral.sixteen/
+      - install -Dm644 THIRD-PARTY-NOTICES.md -t /app/share/licenses/io.github.ticianocorral.sixteen/
+    sources:
+      - type: git
+        url: https://github.com/ticianocorral/sixteen.git
+        # Preencher com `git rev-parse v1.3.2` depois de taggear a release
+        # (e regenerar o cargo-sources.json se o Cargo.lock mudou).
+        tag: v1.3.3
+        commit: ff8800af1b10b64dcc04d5603db81e659938b146
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - cargo-sources.json
