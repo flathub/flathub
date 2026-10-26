@@ -1,0 +1,140 @@
+# Ezoo Download — Flatpak manifest (buildable everywhere)
+#
+# Build locally:   flatpak-builder --user --force-clean --install --user build packaging/flatpak/com.ezoo.Download.yml
+# Prebuilt bundle: attached automatically to every v*-linux* GitHub Release
+#                  (see .github/workflows/flatpak-linux.yml).
+#
+# The bundle is self-contained: it ships a pinned Rust toolchain (1.99.1,
+# matching the container/CI builds), ffmpeg, aria2 and yt-dlp inside the
+# sandbox so the app works out of the box on any distro (the Linux port
+# uses the system helpers found on PATH — inside Flatpak that is /app/bin).
+app-id: com.ezoo.Download
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+command: ezoo-download
+default-branch: stable
+separate-locales: false
+
+finish-args:
+  # GUI
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  # Downloads need real network access
+  - --share=network
+  # Save files wherever the user picks
+  - --filesystem=home
+  # System tray (StatusNotifierItem / ksni) + notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+
+build-options:
+  # Stripping must stay OFF: flatpak-builder's eu-strip pass corrupts
+  # rustc's bundled libLLVM ("object file has no loadable sections").
+  # The heavy pieces are already lean: ffmpeg --disable-debug, cargo
+  # strip=true in the app profile, and cleanup drops the toolchain.
+  strip: false
+  no-debuginfo: true
+  no-debuginfo-compression: true
+  build-args:
+    - --share=network
+  env:
+    CARGO_HOME: /run/build/ezoo-download/cargo
+
+modules:
+  # ---- pinned Rust toolchain (Sdk extension's rustc 1.89 is too old for
+  #      Slint 1.18 which needs rustc >= 1.92) — removed from the final bundle
+  - name: rust-toolchain
+    buildsystem: simple
+    build-commands:
+      - |
+        case "$(uname -m)" in
+          x86_64) t=x86_64-unknown-linux-gnu ;;
+          aarch64) t=aarch64-unknown-linux-gnu ;;
+          *) echo "unsupported arch" >&2; exit 1 ;;
+        esac
+        ./install.sh --prefix=/app --components=rustc,cargo,rust-std-$t
+    cleanup:
+      - /bin/cargo
+      - /bin/cargo-clippy
+      - /bin/clippy-driver
+      - /bin/rustc
+      - /bin/rustdoc
+      - /bin/rustfmt
+      - /bin/rust-gdb
+      - /bin/rust-lldb
+      - /lib/libLLVM*
+      - /lib/rustlib
+      - /share/doc
+      - /share/man
+    sources:
+      - type: archive
+        only-arches: [x86_64]
+        url: https://static.rust-lang.org/dist/rust-1.99.1-x86_64-unknown-linux-gnu.tar.xz
+        sha256: 231fcae47ee950621374725b5fc3b5441d2fbda2955ac45dd7dc816d8876cfe7
+      - type: archive
+        only-arches: [aarch64]
+        url: https://static.rust-lang.org/dist/rust-1.99.1-aarch64-unknown-linux-gnu.tar.xz
+        sha256: a48fb1e853be56ce9b8e2751f5464dbd5e16440cd81e237920f3a5e7e806333e
+  # ---- ffmpeg (muxing / conversion used by yt-dlp flows) -------------------
+  - name: ffmpeg
+    buildsystem: simple
+    build-commands:
+      - ./configure --prefix=/app
+        --disable-debug --disable-doc --disable-static --enable-shared
+        --enable-gpl --enable-version3
+        --disable-ffplay
+      - make -j$(nproc)
+      - make install
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz
+        sha256: 733984395e0dbbe5c046abda2dc49a5544e7e0e1e2366bba849222ae9e3a03b1
+
+  # ---- aria2 (fast segmented downloads) ------------------------------------
+  - name: aria2
+    buildsystem: simple
+    build-commands:
+      - ./configure --prefix=/app
+        --with-openssl --without-gnutls
+        --without-libxml2 --without-libexpat --without-libcares
+        --disable-nls
+      - make -j$(nproc)
+      - make install
+    sources:
+      - type: archive
+        url: https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0.tar.xz
+        sha256: 60a420ad7085eb616cb6e2bdf0a7206d68ff3d37fb5a956dc44242eb2f79b66b
+
+  # ---- yt-dlp (video extraction) --------------------------------------------
+  - name: yt-dlp
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 yt-dlp /app/bin/yt-dlp
+    sources:
+      - type: file
+        url: https://github.com/yt-dlp/yt-dlp/releases/download/2025.10.14/yt-dlp
+        sha256: 104d8103f871fe5f165a945ab82884fa4f34007a8ab0d377fbad54482b6e0b68
+        dest-filename: yt-dlp
+
+  # ---- the app itself --------------------------------------------------------
+  - name: ezoo-download
+    buildsystem: simple
+    build-commands:
+      - cargo build --release --locked -p swiftget
+      - install -Dm755 target/release/EzooDownload /app/bin/ezoo-download
+      - install -Dm644 packaging/icon-256.png /app/share/icons/hicolor/256x256/apps/com.ezoo.Download.png
+      - install -Dm644 packaging/flatpak/com.ezoo.Download.desktop /app/share/applications/com.ezoo.Download.desktop
+      - install -Dm644 packaging/flatpak/com.ezoo.Download.metainfo.xml /app/share/metainfo/com.ezoo.Download.metainfo.xml
+    sources:
+      # Flathub builds pin the release tag instead of a local checkout
+      - type: git
+        url: https://github.com/DrAbdulmalek/ezoo-download.git
+        tag: v1.0.7-linux
+        commit: e1140e42babe6b42da9b6bb4d7d20f3d62411677
+        # x-checker-data lets Flathub's external-data-checker propose updates
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)-linux$
