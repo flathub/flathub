@@ -3,43 +3,50 @@ runtime: org.freedesktop.Platform
 runtime-version: "26.08"
 sdk: org.freedesktop.Sdk
 sdk-extensions:
-  - org.freedesktop.Sdk.Extension.openjdk21
-command: ABDownloadManager
+  - org.freedesktop.Sdk.Extension.openjdk25
+command: com.abdownloadmanager.abdownloadmanager
 finish-args:
   - --share=network
   - --share=ipc
   - --socket=x11
   - --device=dri
   - --filesystem=xdg-download
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --own-name=org.kde.StatusNotifierItem-424242-1
   - --persist=.abdm
-  - --env=PATH=/app/bin:/app/jre/bin:/usr/bin
-  - --env=JAVA_HOME=/app/jre
 
 modules:
-  - name: openjdk
-    buildsystem: simple
-    build-commands:
-      - /usr/lib/sdk/openjdk21/install.sh
+  - fakepid.yml
 
-  - name: ABDownloadManager
+  - name: abdm
     buildsystem: simple
+    build-options:
+      strip: true
     build-commands:
-      - mkdir /app/bin
-      - install -Dm755 bin/ABDownloadManager /app/bin/
-      - cp -r lib /app/
-      - install -Dm644 -t /app/share/applications $FLATPAK_ID.desktop
-      - install -Dm644 -t /app/share/metainfo $FLATPAK_ID.metainfo.xml
-      - install -Dm644 lib/ABDownloadManager.png /app/share/icons/hicolor/512x512/apps/$FLATPAK_ID.png
+      - sed -i s/distributionUrl.*/distributionUrl=gradle-bin.zip/ gradle/wrapper/gradle-wrapper.properties
+      - |
+        source /usr/lib/sdk/openjdk25/enable.sh
+        ./gradlew --offline --no-daemon --console=plain --init-script offline.gradle createReleaseDistributable
+      - mv desktop/app/build/compose/binaries/main-release/app/ABDownloadManager ${FLATPAK_DEST}/ab-download-manager
+      - install -Dm755 ${FLATPAK_ID}.sh ${FLATPAK_DEST}/bin/${FLATPAK_ID}
+      - install -Dm644 desktop/app/icons/icon.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+      - install -Dm644 -t ${FLATPAK_DEST}/share/applications ${FLATPAK_ID}.desktop
+      - install -Dm644 -t ${FLATPAK_DEST}/share/metainfo ${FLATPAK_ID}.metainfo.xml
     sources:
+      - type: git
+        url: https://github.com/amir1376/ab-download-manager.git
+        tag: v1.11.1
+        commit: 08bfd440a30d367ae369739d866d30f8c1d4b3af
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - type: file
+        path: offline.gradle
+      - type: file
+        path: com.abdownloadmanager.abdownloadmanager.sh
       - type: file
         path: com.abdownloadmanager.abdownloadmanager.desktop
       - type: file
         path: com.abdownloadmanager.abdownloadmanager.metainfo.xml
-      - type: archive
-        url: https://github.com/amir1376/ab-download-manager/releases/download/v1.8.4/ABDownloadManager_1.8.4_linux_x64.tar.gz
-        sha256: 69a7a00e1d14b31d21c8f4104ee3b91324b9b0d45444c0442c5bac1d5ac290ba
-        x-checker-data:
-          type: json
-          url: https://api.github.com/repos/amir1376/ab-download-manager/releases/latest
-          version-query: .tag_name | sub("^v"; "")
-          url-query: .assets[] | select(.name=="ABDownloadManager_" + $version + "_linux_x64.tar.gz") | .browser_download_url
+      - gradle-sources.json
