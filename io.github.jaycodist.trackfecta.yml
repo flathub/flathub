@@ -1,0 +1,86 @@
+# Trackfecta Flatpak manifest
+app-id: io.github.jaycodist.trackfecta
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node22
+command: trackfecta
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node22/bin
+  env:
+    CARGO_HOME: /run/build/trackfecta/cargo
+    npm_config_cache: /run/build/trackfecta/flatpak-node/npm-cache
+    npm_config_nodedir: /usr/lib/sdk/node22
+finish-args:
+  # Display: X11 with a Wayland fallback.
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --share=ipc
+  - --share=network
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --filesystem=xdg-run/tray-icon:create
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.gnome.Mutter.IdleMonitor
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --system-talk-name=org.freedesktop.login1
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+modules:
+  - name: node22
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/node22/install-sdk.sh
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+  - name: trackfecta
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node22/bin
+      env:
+        CARGO_HOME: /run/build/trackfecta/cargo
+        npm_config_cache: /run/build/trackfecta/flatpak-node/npm-cache
+        npm_config_nodedir: /usr/lib/sdk/node22
+    sources:
+      - type: git
+        url: https://github.com/JayCodist/trackfecta.git
+        tag: v1.0.3
+        commit: 57de4bda45d45d9b24e65675499aa2415453bd4a
+      - cargo-sources.json
+      - npm-sources.json
+    build-commands:
+      - mv cargo/config cargo/config.toml
+      - npm ci --offline
+      - cargo --offline fetch --manifest-path src-tauri/Cargo.toml
+      - npm run tauri:build -- --bundles deb --config
+        '{"bundle":{"createUpdaterArtifacts":false}}'
+      - mkdir -p extracted
+      - cd extracted && ar x ../src-tauri/target/release/bundle/deb/*.deb
+      - cd extracted && tar -xf data.tar.*
+      - |
+        bin=$(ls extracted/usr/bin/* | head -n1)
+        install -Dm755 "$bin" /app/bin/trackfecta
+      - |
+        src=$(ls extracted/usr/share/applications/*.desktop | head -n1)
+        install -Dm644 "$src" /app/share/applications/io.github.jaycodist.trackfecta.desktop
+        desktop-file-edit --set-key=Exec --set-value=trackfecta \
+          /app/share/applications/io.github.jaycodist.trackfecta.desktop
+        desktop-file-edit --set-key=Icon --set-value=io.github.jaycodist.trackfecta \
+          /app/share/applications/io.github.jaycodist.trackfecta.desktop
+      - |
+        for f in extracted/usr/share/icons/hicolor/*/apps/*.png; do
+          [ -e "$f" ] || continue
+          size=$(basename "$(dirname "$(dirname "$f")")")
+          install -Dm644 "$f" \
+            "/app/share/icons/hicolor/$size/apps/io.github.jaycodist.trackfecta.png"
+        done
+      - install -Dm644 src-tauri/icons/trackfecta-logo.svg
+        /app/share/icons/hicolor/scalable/apps/io.github.jaycodist.trackfecta.svg
+      - install -Dm644 metadata/io.github.jaycodist.trackfecta.metainfo.xml
+        /app/share/metainfo/io.github.jaycodist.trackfecta.metainfo.xml
+      - install -Dm644 LICENSE
+        /app/share/licenses/io.github.jaycodist.trackfecta/LICENSE
