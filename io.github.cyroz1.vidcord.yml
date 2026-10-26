@@ -1,0 +1,144 @@
+app-id: io.github.cyroz1.vidcord
+runtime: org.gnome.Platform
+runtime-version: "50"
+sdk: org.gnome.Sdk
+command: vidcord
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --socket=pulseaudio
+  # vidcord is a file-processing tool: it opens user-picked folders, writes to
+  # a persisted custom output folder, and reveals outputs in the file manager.
+  - --filesystem=home
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg-full
+    version: "24.08"
+    add-ld-path: lib
+    merge-dirs: share
+    subdirectories: true
+    no-autodownload: false
+    autodelete: false
+modules:
+  - name: vidcord
+    buildsystem: simple
+    build-commands:
+      # Placeholder directory the ffmpeg-full extension mounts into.
+      - mkdir -p /app/lib/ffmpeg-full
+      - chmod +x vidcord.AppImage
+      - ./vidcord.AppImage --appimage-extract
+      # The application binary runs against the runtime's GTK, WebKitGTK and
+      # GStreamer; the AppImage's bundled libraries are not installed.
+      - install -Dm755 squashfs-root/usr/bin/vidcord /app/libexec/vidcord
+      - mkdir -p /app/bin
+      - |
+        cat > /app/bin/vidcord <<'EOF'
+        #!/bin/sh
+        # vidcord shells out to ffmpeg/ffprobe on PATH; inside the sandbox
+        # they come from the ffmpeg-full runtime extension.
+        export PATH="/app/lib/ffmpeg-full/bin:$PATH"
+        exec /app/libexec/vidcord "$@"
+        EOF
+      - chmod +x /app/bin/vidcord
+      - install -Dm644 squashfs-root/vidcord.desktop
+          /app/share/applications/io.github.cyroz1.vidcord.desktop
+      - sed -i 's/^Icon=vidcord$/Icon=io.github.cyroz1.vidcord/'
+          /app/share/applications/io.github.cyroz1.vidcord.desktop
+      - install -Dm644 squashfs-root/usr/share/icons/hicolor/128x128/apps/vidcord.png
+          /app/share/icons/hicolor/128x128/apps/io.github.cyroz1.vidcord.png
+      - install -Dm644 "squashfs-root/usr/share/icons/hicolor/256x256@2/apps/vidcord.png"
+          /app/share/icons/hicolor/256x256/apps/io.github.cyroz1.vidcord.png
+      - mkdir -p /app/share/metainfo
+      - |
+        cat > /app/share/metainfo/io.github.cyroz1.vidcord.metainfo.xml <<'EOF'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <component type="desktop-application">
+          <id>io.github.cyroz1.vidcord</id>
+          <metadata_license>CC0-1.0</metadata_license>
+          <project_license>MIT</project_license>
+          <name>vidcord</name>
+          <summary>Video compressor for Discord</summary>
+          <description>
+            <p>
+              vidcord is a desktop video compressor built for one job: getting a
+              video under a target file size without guesswork. Pick a size, and
+              vidcord works out the bitrate and encodes with FFmpeg, using GPU
+              encoders when they are available.
+            </p>
+            <p>
+              It includes a trim timeline with keyframe-aware lossless trimming,
+              batch and folder imports, saved compression presets, and a preview
+              player. Everything runs locally on your machine.
+            </p>
+          </description>
+          <developer id="net.cyroz">
+            <name>cyroz1</name>
+          </developer>
+          <launchable type="desktop-id">io.github.cyroz1.vidcord.desktop</launchable>
+          <provides>
+            <binary>vidcord</binary>
+          </provides>
+          <url type="homepage">https://vidcord.app/</url>
+          <url type="bugtracker">https://github.com/cyroz1/vidcord/issues</url>
+          <url type="vcs-browser">https://github.com/cyroz1/vidcord</url>
+          <categories>
+            <category>AudioVideo</category>
+            <category>Video</category>
+          </categories>
+          <icon type="stock">io.github.cyroz1.vidcord</icon>
+          <screenshots>
+            <screenshot type="default">
+              <image>https://vidcord.app/marketing-assets/window.png</image>
+              <caption>Main window</caption>
+            </screenshot>
+          </screenshots>
+          <content_rating type="oars-1.1">
+            <content_attribute id="social-info">none</content_attribute>
+            <content_attribute id="social-audio">none</content_attribute>
+            <content_attribute id="social-chat">none</content_attribute>
+            <content_attribute id="social-contacts">none</content_attribute>
+            <content_attribute id="social-location">none</content_attribute>
+            <content_attribute id="drugs-alcohol">none</content_attribute>
+            <content_attribute id="drugs-narcotics">none</content_attribute>
+            <content_attribute id="drugs-tobacco">none</content_attribute>
+            <content_attribute id="language-humor">none</content_attribute>
+            <content_attribute id="language-profanity">none</content_attribute>
+            <content_attribute id="language-discrimination">none</content_attribute>
+            <content_attribute id="money-advertising">none</content_attribute>
+            <content_attribute id="money-gambling">none</content_attribute>
+            <content_attribute id="money-purchasing">none</content_attribute>
+            <content_attribute id="sex-adultery">none</content_attribute>
+            <content_attribute id="sex-appearance">none</content_attribute>
+            <content_attribute id="sex-prostitution">none</content_attribute>
+            <content_attribute id="sex-themes">none</content_attribute>
+            <content_attribute id="violence-bloodshed">none</content_attribute>
+            <content_attribute id="violence-desecration">none</content_attribute>
+            <content_attribute id="violence-fantasy">none</content_attribute>
+            <content_attribute id="violence-realistic">none</content_attribute>
+            <content_attribute id="violence-sexual">none</content_attribute>
+            <content_attribute id="violence-slavery">none</content_attribute>
+            <content_attribute id="violence-worship">none</content_attribute>
+          </content_rating>
+          <releases>
+            <release version="7.7.0" date="2026-10-26">
+              <url>https://github.com/cyroz1/vidcord/releases/tag/v7.7</url>
+            </release>
+            <release version="7.6.0" date="2026-10-13">
+              <url>https://github.com/cyroz1/vidcord/releases/tag/v7.6</url>
+            </release>
+          </releases>
+        </component>
+        EOF
+    sources:
+      - type: file
+        dest-filename: vidcord.AppImage
+        only-arches: [x86_64]
+        url: https://github.com/cyroz1/vidcord/releases/download/v7.7/vidcord_7.7.0_amd64.AppImage
+        sha256: cfcfb7a09944448c4c5b8772348869370780414976929f8a2065c8c69728728e
+      - type: file
+        dest-filename: vidcord.AppImage
+        only-arches: [aarch64]
+        url: https://github.com/cyroz1/vidcord/releases/download/v7.7/vidcord_7.7.0_aarch64.AppImage
+        sha256: c9e589beecd7121db41bcc99abc10e05aeb36a93f9fc94e583e193b45747d719
