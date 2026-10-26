@@ -1,0 +1,64 @@
+app-id: io.github.sinarahmany.Freequence-desktop
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node20
+command: freequence
+
+finish-args:
+  # Network access for streaming & remote artwork
+  - --share=network
+  - --share=ipc
+  # Wayland and X11 display sockets
+  - --socket=fallback-x11
+  - --socket=wayland
+  # Hardware acceleration
+  - --device=dri
+  # PulseAudio / PipeWire audio output
+  - --socket=pulseaudio
+  # Music library and application data access
+  - --filesystem=xdg-music:ro
+  - --filesystem=xdg-data/freequence:create
+  # Linux desktop media control and notifications
+  - --own-name=org.mpris.MediaPlayer2.freequence
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  - name: freequence
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
+      env:
+        CARGO_HOME: /run/build/freequence/cargo
+        CARGO_NET_OFFLINE: 'true'
+        XDG_CACHE_HOME: /run/build/freequence/flatpak-node/cache
+        npm_config_cache: /run/build/freequence/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+    build-commands:
+      # Configure offline vendored Cargo sources
+      - install -Dm644 cargo/config .cargo/config.toml
+      # Build frontend assets using offline npm cache
+      - npm --prefix ui ci --offline
+      - npm --prefix ui run build
+      # Build Rust binary in release mode using offline vendored crates
+      - cargo build --release --offline --ignore-rust-version --manifest-path src-tauri/Cargo.toml
+      # Install binary
+      - install -Dm755 src-tauri/target/release/freequence /app/bin/freequence
+      # Install desktop integration files
+      - install -Dm644 io.github.sinarahmany.Freequence-desktop.desktop /app/share/applications/io.github.sinarahmany.Freequence-desktop.desktop
+      - install -Dm644 io.github.sinarahmany.Freequence-desktop.metainfo.xml /app/share/metainfo/io.github.sinarahmany.Freequence-desktop.metainfo.xml
+      # Install icons across standard resolutions
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/io.github.sinarahmany.Freequence-desktop.png
+      - install -Dm644 src-tauri/icons/64x64.png /app/share/icons/hicolor/64x64/apps/io.github.sinarahmany.Freequence-desktop.png
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.sinarahmany.Freequence-desktop.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/io.github.sinarahmany.Freequence-desktop.png
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/io.github.sinarahmany.Freequence-desktop.png
+    sources:
+      - type: git
+        url: https://github.com/sinarahmany/Freequence-desktop.git
+        tag: v0.1.0
+        commit: fa0829e75afcee9ceab51f4ccf7f034e42142093
+      - cargo-sources.json
+      - npm-sources.json
