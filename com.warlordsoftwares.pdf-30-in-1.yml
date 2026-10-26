@@ -1,0 +1,132 @@
+app-id: com.warlordsoftwares.pdf-30-in-1
+runtime: org.kde.Platform
+runtime-version: "5.15-25.08"
+sdk: org.kde.Sdk
+base: com.riverbankcomputing.PyQt.BaseApp
+base-version: "5.15-25.08"
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+
+command: pdf30in1.sh
+
+finish-args:
+  - --share=network  # HTML to PDF from a web address, OCR language downloads
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Files are opened and output folders chosen through the file chooser portal, and results opened / shown in
+  # the file manager through the OpenURI portal - so no access to the whole home folder. What's left:
+  - --filesystem=xdg-documents  # results are saved to ~/Documents/PDF 30-in-1 by default
+  - --filesystem=xdg-download:ro  # PDFs dragged in from Downloads (file managers without the portal)
+  - --env=APP_PLATFORM=FLATPAK
+  - --env=QTWEBENGINE_DISABLE_SANDBOX=1
+  - --env=TESSDATA_PREFIX=/app/share/tessdata
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/man
+  - /share/doc
+  - "*.la"
+  - "*.a"
+
+modules:
+  - python3-req.json
+
+  - name: leptonica
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DSW_BUILD=OFF
+      - -DBUILD_PROG=OFF
+    sources:
+      - type: git
+        url: https://github.com/DanBloomberg/leptonica.git
+        tag: 1.87.0
+        commit: 13275a278eb55b5746e33f95fbf5a2c8f604b3ab
+
+  - name: tesseract
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_TRAINING_TOOLS=OFF
+      - -DGRAPHICS_DISABLED=ON
+      - -DDISABLE_CURL=ON
+      - -DDISABLE_ARCHIVE=ON
+      - -DOPENMP_BUILD=OFF
+      - -DBUILD_TESTS=OFF
+    sources:
+      - type: git
+        url: https://github.com/tesseract-ocr/tesseract.git
+        tag: 5.5.3
+        commit: db0ec62f81b0737fbbe184d8fea40af5738f8eef
+
+  - name: tessdata
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 -t ${FLATPAK_DEST}/share/tessdata eng.traineddata osd.traineddata
+    sources:
+      - type: file
+        url: https://github.com/tesseract-ocr/tessdata_fast/raw/4.1.0/eng.traineddata
+        sha256: 7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2
+      - type: file
+        url: https://github.com/tesseract-ocr/tessdata_fast/raw/4.1.0/osd.traineddata
+        sha256: 9cf5d576fcc47564f11265841e5ca839001e7e6f38ff7f7aacf46d15a96b00ff
+
+  - name: ghostscript
+    buildsystem: autotools
+    config-opts:
+      - --disable-cups
+      - --disable-gtk
+      - --without-x
+      - --without-tesseract
+      - --with-system-libtiff
+    cleanup:
+      - /share/ghostscript/*/doc
+      - /share/ghostscript/*/examples
+    sources:
+      - type: archive
+        url: https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10080/ghostscript-10.08.0.tar.xz
+        sha256: c20492bc8ebb96c87fa2e52a0926e1cda8cde95d66145e018ac713fed5da38cf
+
+  - name: libreoffice
+    buildsystem: simple
+    only-arches:
+      - x86_64
+    build-commands:
+      - mkdir -p unpacked
+      - |
+        for deb in DEBS/*.deb; do
+          case "$deb" in
+            *-base*|*-math*|*-gnome-integration*|*-kde-integration*|*-onlineupdate*|*-dict-*) continue ;;
+          esac
+          ar p "$deb" data.tar.xz | tar -xJ -C unpacked
+        done
+      - mkdir -p ${FLATPAK_DEST}/libreoffice ${FLATPAK_DEST}/bin
+      - cp -a unpacked/opt/libreoffice*/. ${FLATPAK_DEST}/libreoffice/
+      - ln -sf ${FLATPAK_DEST}/libreoffice/program/soffice ${FLATPAK_DEST}/bin/soffice
+    sources:
+      - type: archive
+        url: https://downloadarchive.documentfoundation.org/libreoffice/old/26.2.6.3/deb/x86_64/LibreOffice_26.2.6.3_Linux_x86-64_deb.tar.gz
+        sha256: fd0e8f8f2408dd2e5b90286e60f3f97cf566ba441cd48cfc5bcc68067303e0bc
+
+  - name: pdf-30-in-1
+    buildsystem: simple
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/pdf30in1
+      - cp -r * ${FLATPAK_DEST}/pdf30in1
+      - install -Dm755 ${FLATPAK_DEST}/pdf30in1/flatpak/pdf30in1.sh ${FLATPAK_DEST}/bin/pdf30in1.sh
+      - install -Dm644 ${FLATPAK_DEST}/pdf30in1/flatpak/share/icons/icon.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/com.warlordsoftwares.pdf-30-in-1.png
+      - install -Dm644 ${FLATPAK_DEST}/pdf30in1/flatpak/share/applications/com.warlordsoftwares.pdf-30-in-1.desktop ${FLATPAK_DEST}/share/applications/com.warlordsoftwares.pdf-30-in-1.desktop
+      - desktop-file-edit --set-icon=${FLATPAK_ID} ${FLATPAK_DEST}/share/applications/com.warlordsoftwares.pdf-30-in-1.desktop
+      - install -Dm644 ${FLATPAK_DEST}/pdf30in1/flatpak/share/metainfo/com.warlordsoftwares.pdf-30-in-1.metainfo.xml ${FLATPAK_DEST}/share/metainfo/com.warlordsoftwares.pdf-30-in-1.metainfo.xml
+      - python3 -m compileall -q ${FLATPAK_DEST}/pdf30in1
+    sources:
+      - type: archive
+        url: https://warlordsoftwares.com/static/app_builds/flatpak/FLATPAK_PDF-30-IN-1.tar.gz
+        sha256: b38810c56b3071d3cf375a04325bd12faa3118cdcf614d5852af22509e96b68a
