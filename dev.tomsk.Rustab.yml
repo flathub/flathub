@@ -37,10 +37,16 @@ modules:
       - tar xzf wasm-bindgen-cli-bin/wasm-bindgen.tar.gz -C wasm-bindgen-cli --strip-components=1
       - mkdir -p rust-std-wasm32-extracted
       - tar xzf rust-std-wasm32/rust-std-1.98.0-wasm32-unknown-unknown.tar.gz -C rust-std-wasm32-extracted --strip-components=1
+      # The musl std for this arch, for the statically-linked rustab-helper
+      - mkdir -p rust-std-musl-extracted
+      - tar xzf rust-std-musl/rust-std-musl.tar.gz -C rust-std-musl-extracted --strip-components=1
+      # One sysroot carrying the SDK's own toolchain
       - mkdir -p custom-sysroot
       - cp -rs /usr/lib/sdk/rust-stable/. custom-sysroot/
       - rm -rf custom-sysroot/lib/rustlib/wasm32-unknown-unknown
       - cp -r rust-std-wasm32-extracted/rust-std-wasm32-unknown-unknown/lib/rustlib/wasm32-unknown-unknown custom-sysroot/lib/rustlib/
+      - rm -rf "custom-sysroot/lib/rustlib/${FLATPAK_ARCH}-unknown-linux-musl"
+      - cp -r "rust-std-musl-extracted/rust-std-${FLATPAK_ARCH}-unknown-linux-musl/lib/rustlib/${FLATPAK_ARCH}-unknown-linux-musl" custom-sysroot/lib/rustlib/
       - >-
         RUSTFLAGS="--sysroot=$PWD/custom-sysroot"
         cargo --offline build --release --target wasm32-unknown-unknown --manifest-path frontend/Cargo.toml
@@ -50,6 +56,8 @@ modules:
         --out-dir frontend/dist --out-name rustab
         frontend/target/wasm32-unknown-unknown/release/rustab-frontend.wasm
       - cp frontend/styles/tailwind.css frontend/dist/tailwind.css
+      # Frontend + logo
+      - cp src-tauri/icons/128x128.png frontend/dist/128x128.png
       - >-
         sed
         -e 's#<link data-trunk rel="css" href="styles/tailwind.css" />#<link rel="stylesheet" href="tailwind.css" />#'
@@ -58,6 +66,10 @@ modules:
         frontend/index.html > frontend/dist/index.html
       - cargo --offline build --release -p rustab --features tauri/custom-protocol
       - install -Dm755 target/release/rustab /app/bin/rustab
+      - >-
+        RUSTFLAGS="--sysroot=$PWD/custom-sysroot"
+        cargo --offline build --release -p rustab-helper --target "${FLATPAK_ARCH}-unknown-linux-musl"
+      - install -Dm755 "target/${FLATPAK_ARCH}-unknown-linux-musl/release/rustab-helper" /app/bin/rustab-helper
       - install -Dm644 flatpak/dev.tomsk.Rustab.desktop /app/share/applications/dev.tomsk.Rustab.desktop
       - install -Dm644 flatpak/dev.tomsk.Rustab.metainfo.xml /app/share/metainfo/dev.tomsk.Rustab.metainfo.xml
       - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/dev.tomsk.Rustab.png
@@ -70,9 +82,9 @@ modules:
         commit: 0d614c5d097a0500bbeb54cc1cd79389224b3e42
 
       - cargo-sources.json
-      
+
       - frontend-cargo-sources.json
-      
+
       - node-sources.json
 
       - type: file
@@ -93,3 +105,17 @@ modules:
         url: https://static.rust-lang.org/dist/rust-std-1.98.0-wasm32-unknown-unknown.tar.gz
         sha256: d2443b4da8d168f152875416ab204fea42f2ed7d9dcce92725d579722e0bdaa5
         dest: rust-std-wasm32
+
+      - type: file
+        only-arches: [x86_64]
+        url: https://static.rust-lang.org/dist/rust-std-1.98.0-x86_64-unknown-linux-musl.tar.gz
+        sha256: 55bfdf0251483418266b1f2727debae59a96b9e5881ab9e9665a6c4987e05aa6
+        dest: rust-std-musl
+        dest-filename: rust-std-musl.tar.gz
+
+      - type: file
+        only-arches: [aarch64]
+        url: https://static.rust-lang.org/dist/rust-std-1.98.0-aarch64-unknown-linux-musl.tar.gz
+        sha256: 4367ba0e6b8fa5ef9c195d12f0ab4a39b8f08cda627cf121f5f929d47161f4b4
+        dest: rust-std-musl
+        dest-filename: rust-std-musl.tar.gz
