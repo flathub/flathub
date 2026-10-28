@@ -1,0 +1,112 @@
+# Flatpak manifest for the GNOME frontend.
+#
+# Self-contained: every input is declared here, so this builds from a plain
+# checkout with no preparation steps -- which is also what makes it work
+# unchanged in GNOME Builder. The sandbox has no network during the build, so
+# anything this file does not declare is simply absent, which makes it the
+# strictest test of the clone-and-build promise in the whole project.
+#
+# TWO dependencies, both provisioned from the pinned commits below exactly as
+# cmake/Dependencies.cmake pins them, so a flatpak build never depends on a
+# working checkout's state: atari800 (staged and patched at configure time)
+# and fujinet-firmware (built as libfujinet, PC_TARGET=ATARI).
+# tools/fujinet/update-fujinet-firmware.sh moves the firmware pin here too.
+#
+# -DWITH_ATARI800_ROMS=OFF, as every published build: nothing copyrighted is
+# embedded. AltirraOS and Altirra BASIC are built in; Atari's own ROMs are
+# imported at run time (see COMPLIANCE.md).
+#
+# Build + install + run:
+#   flatpak-builder --user --install --force-clean build-flatpak \
+#       build-aux/flatpak/online.fujinet.go.atari800.gnome.yml
+#   flatpak run online.fujinet.go.atari800.gnome
+#
+app-id: online.fujinet.go.atari800.gnome
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: fujinet-go-atari800-gnome
+
+finish-args:
+  - --share=ipc
+  - --share=network          # FujiNet's network + NetSIO and the web UI on loopback
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio      # SDL audio (PipeWire's Pulse interface)
+  - --device=all             # gamepad hotplug (hidraw/evdev)
+
+modules:
+  - name: sdl3
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DSDL_STATIC=OFF
+      - -DSDL_TEST_LIBRARY=OFF
+    sources:
+      - type: git
+        url: https://github.com/libsdl-org/SDL.git
+        # keep in step with the SDL the CI jobs build
+        tag: release-3.4.12
+        commit: f87239e71e42da91ca317a12eefb82cfbf3393eb
+
+  # The FujiNet runtime's vendored build_webui.py imports PyYAML and Jinja2
+  # from whatever python3 tools/fujinet/build-fujinet-desktop.sh runs --
+  # every CI job's runner already has both system-wide, but org.gnome.Sdk's
+  # python3 has neither and the sandboxed build step can't pip install them
+  # (no network). Pre-built wheels, not sdists: PyYAML and MarkupSafe's C
+  # extensions need a build backend pip can't reach offline (jinja2's own
+  # backend, flit_core, isn't present either), and a wheel needs none --
+  # pip just unpacks it. Pinned to org.gnome.Sdk 51's python3 (3.14,
+  # confirmed from the sandbox's own traceback) x86_64 manylinux wheels;
+  # installed to a fixed, python-version-independent path so the
+  # fujinet-go-atari800 module below can just PYTHONPATH at it.
+  - name: python3-fujinet-webui-deps
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --find-links="file://${PWD}"
+        --target=/app/fujinet-pyshims PyYAML==6.0.3 MarkupSafe==3.0.3 Jinja2==3.1.6
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/88/f9/16491d7ed2a919954993e48aa941b200f38040928474c9e85ea9e64222c3/pyyaml-6.0.3-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
+        sha256: c458b6d084f9b935061bc36216e8a69a7e293a2f1e68bf956dcd9e6cbcd143f5
+      - type: file
+        url: https://files.pythonhosted.org/packages/41/3c/a36c2450754618e62008bf7435ccb0f88053e07592e6028a34776213d877/markupsafe-3.0.3-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
+        sha256: 457a69a9577064c05a97c41f4e65148652db078a3a509039e64d3467b9e7ef97
+      - type: file
+        url: https://files.pythonhosted.org/packages/62/a1/3d680cbfd5f4b8f15abc1d571870c5fc3e594bb582bc3b64ea099db13e56/jinja2-3.1.6-py3-none-any.whl
+        sha256: 85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
+
+  - name: fujinet-go-atari800
+    buildsystem: cmake-ninja
+    builddir: true
+    build-options:
+      env:
+        PYTHONPATH: /app/fujinet-pyshims
+    config-opts:
+      - -DFRONTEND=gnome
+      - -DWITH_ATARI800_ROMS=OFF
+      - -DA800_AB_TEST=OFF
+    sources:
+      - type: git
+        url: https://github.com/FujiNetWIFI/fujinet-go-atari800-desktop
+        commit: f0ac33342e752084d147c49d11754891555b8c4f
+      - type: git
+        url: https://github.com/atari800/atari800
+        commit: b49865e63f5675c798d0122a5ff65c89b2f2748b
+        dest: third_party/atari800
+      # Pinned exactly as cmake/Dependencies.cmake (FUJINET_COMMIT).
+      - type: git
+        url: https://github.com/FujiNetWIFI/fujinet-firmware
+        commit: 3377f0f642e827aff83ddc82db3d889236222a04
+        dest: third_party/fujinet-firmware
+      # Same reasoning: the sandboxed build step has no network access, but
+      # tools/fujinet/build-fujinet-desktop.sh needs mbedTLS 3.x and
+      # org.gnome.Sdk ships none. Pinned to the exact tag/commit the script
+      # itself builds when it has to fetch mbedTLS live (MBEDTLS_TAG) --
+      # ensure_mbedtls skips that fetch once it finds a checkout here.
+      - type: git
+        url: https://github.com/Mbed-TLS/mbedtls.git
+        tag: mbedtls-3.6.5
+        commit: e185d7fd85499c8ce5ca2a54f5cf8fe7dbe3f8df
+        dest: tools/fujinet/work/mbedtls-src
