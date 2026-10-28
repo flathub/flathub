@@ -1,0 +1,74 @@
+id: io.github.JulioSoaresL.ContainerPanel
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '26.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+command: docker-panel
+separate-locales: false
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # Servidor HTTP/WebSocket do painel em 127.0.0.1 e links para as portas dos containers.
+  - --share=network
+  # API do Docker (rootful e rootless).
+  - --filesystem=/run/docker.sock
+  - --filesystem=xdg-run/docker.sock
+  # Procura arquivos compose no home e o compose lê os projetos nos caminhos originais.
+  - --filesystem=home
+
+modules:
+  # Binário standalone do Docker Compose; usado pelas ações de projeto (subir/derrubar/...).
+  - name: docker-compose
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 docker-compose /app/bin/docker-compose
+    sources:
+      - type: file
+        only-arches: [x86_64]
+        url: https://github.com/docker/compose/releases/download/v5.6.1/docker-compose-linux-x86_64
+        sha256: 47737f4236e6d3ccea7291995203f8f018058783b4c3a9469119811a0b5db8c0
+        dest-filename: docker-compose
+      - type: file
+        only-arches: [aarch64]
+        url: https://github.com/docker/compose/releases/download/v5.6.1/docker-compose-linux-aarch64
+        sha256: 42cfa75f51ad0ccf290bad37899e0038a8c10a0069e85233ecc1d53e3ff1347d
+        dest-filename: docker-compose
+
+  - name: docker-panel
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node24/bin
+      env:
+        NPM_CONFIG_LOGLEVEL: info
+        XDG_CACHE_HOME: /run/build/docker-panel/flatpak-node/cache
+    sources:
+      # Para o Flathub, trocar por `type: git` com `tag` e `commit` do release.
+      - type: dir
+        path: ..
+        skip: [node_modules, dist, build-dir, .flatpak-builder, .git, data]
+      - generated-sources.json
+      - type: script
+        dest-filename: docker-panel.sh
+        commands:
+          - export PANEL_COMPOSE_BIN=/app/bin/docker-compose
+          - exec zypak-wrapper /app/main/docker-panel "$@"
+    build-commands:
+      - npm ci --offline --cache=$FLATPAK_BUILDER_BUILDDIR/flatpak-node/npm-cache
+      # O Electron 45 baixa o binário sob demanda; o build é offline, então extrai o zip das fontes.
+      - |
+        case "$FLATPAK_ARCH" in x86_64) EARCH=x64 ;; aarch64) EARCH=arm64 ;; esac
+        unzip -q flatpak-node/cache/electron/electron-v45.0.0-linux-$EARCH.zip -d node_modules/electron/dist
+      - |
+        . flatpak-node/electron-builder-arch-args.sh
+        npm run build:dir -- $ELECTRON_BUILDER_ARCH_ARGS
+      - cp -a dist/linux*unpacked /app/main
+      - install -Dm755 docker-panel.sh /app/bin/docker-panel
+      - install -Dm644 flatpak/io.github.JulioSoaresL.ContainerPanel.desktop -t /app/share/applications
+      - install -Dm644 flatpak/io.github.JulioSoaresL.ContainerPanel.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 public/icon.svg /app/share/icons/hicolor/scalable/apps/io.github.JulioSoaresL.ContainerPanel.svg
