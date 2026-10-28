@@ -1,0 +1,170 @@
+# Flatpak manifest for the GNOME frontend.
+#
+# Self-contained: every input is declared here, so this builds from a plain
+# checkout with no preparation steps -- which is also what makes it work
+# unchanged in GNOME Builder (Builder finds this manifest, and its Run button
+# then builds and launches the app).
+#
+# The app source is the local tree minus the directories the manifest
+# provides itself: third_party/ comes from the pinned git sources below (the
+# same commits as the submodules -- see cmake/Dependencies.cmake), so a
+# flatpak build never depends on the state of a working checkout.
+#
+# The sandbox has NO NETWORK during the build, so anything not declared here
+# is simply absent. That is what makes this the strictest test of the
+# clone-and-build promise.
+#
+# Build + install + run:
+#   flatpak-builder --user --install --force-clean build-flatpak \
+#       build-aux/flatpak/online.fujinet.go.apple2.gnome.yml
+#   flatpak run online.fujinet.go.apple2.gnome
+#
+# NOTE: bump runtime-version (and the SDL tag) as new GNOME runtimes ship;
+# `flatpak remote-ls flathub --runtime | grep org.gnome.Platform` lists what
+# is available. Old runtimes go end-of-life quickly -- 48 was retired in
+# March 2026.
+
+app-id: online.fujinet.go.apple2.gnome
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: fujinet-go-apple2-gnome
+
+finish-args:
+  - --share=ipc
+  - --share=network          # TNFS hosts + the loopback SmartPort/web UI
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio      # SDL audio (PipeWire's Pulse interface)
+  - --device=all             # gamepad hotplug (hidraw/evdev)
+
+modules:
+  - name: sdl3
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DSDL_STATIC=OFF
+      - -DSDL_TEST_LIBRARY=OFF
+    sources:
+      - type: git
+        url: https://github.com/libsdl-org/SDL.git
+        # Pin the release you validated against; keep it in step with the
+        # SDL the CI jobs build (.github/workflows/ci.yml).
+        tag: release-3.4.12
+        commit: f87239e71e42da91ca317a12eefb82cfbf3393eb
+
+  # AppleWin needs Boost headers (property_tree, algorithm/string,
+  # multi_array) and the GNOME runtime ships none. Header-only: nothing is
+  # compiled or linked, so this is just an unpack -- but without it the build
+  # fails, and the sandbox has no network to go and find it.
+  - name: boost-headers
+    buildsystem: simple
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/include
+      - cp -r boost ${FLATPAK_DEST}/include/
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://github.com/boostorg/boost/releases/download/boost-1.89.0/boost-1.89.0-b2-nodocs.tar.xz
+        sha256: 875cc413afa6b86922b6df3b2ad23dec4511c8a741753e57c1129e7fa753d700
+
+  # FujiNet links mbedTLS statically and needs 3.x (4.x drops the legacy
+  # mbedtls/md5.h it includes); the runtime ships none. Threading is switched
+  # on because fujinet drives TLS from several threads.
+  - name: mbedtls
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DENABLE_PROGRAMS=OFF
+      - -DENABLE_TESTING=OFF
+      - -DMBEDTLS_FATAL_WARNINGS=OFF
+      - -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+      - -DUSE_STATIC_MBEDTLS_LIBRARY=ON
+      - -DUSE_SHARED_MBEDTLS_LIBRARY=OFF
+      - -DLINK_WITH_PTHREAD=ON
+      # Left to GNUInstallDirs this lands in lib64 on some builders and lib
+      # on others; the FujiNet build has to find it either way, but pinning
+      # it keeps the two ends predictable.
+      - -DCMAKE_INSTALL_LIBDIR=lib
+    cleanup:
+      - '*'
+    sources:
+      - type: git
+        url: https://github.com/Mbed-TLS/mbedtls.git
+        tag: mbedtls-3.6.5
+        commit: e185d7fd85499c8ce5ca2a54f5cf8fe7dbe3f8df
+      - type: shell
+        commands:
+          - sed -i -e 's|^//#define MBEDTLS_THREADING_C|#define MBEDTLS_THREADING_C|'
+            -e 's|^//#define MBEDTLS_THREADING_PTHREAD|#define MBEDTLS_THREADING_PTHREAD|'
+            include/mbedtls/mbedtls_config.h
+
+  # The FujiNet build renders its web UI from jinja2 templates driven by a
+  # yaml description. Build-time only: /app/lib/python3.12/site-packages is on
+  # the SDK python's path, and the module cleans up after itself.
+  - name: python3-webui-deps
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --no-build-isolation --prefix=${FLATPAK_DEST}
+        --find-links="file://${PWD}" flit_core
+      - PYTHONPATH=${FLATPAK_DEST}/lib/python3.13/site-packages:${FLATPAK_DEST}/lib/python3.12/site-packages
+        pip3 install --no-index --no-build-isolation --prefix=${FLATPAK_DEST}
+        --find-links="file://${PWD}" PyYAML Jinja2 MarkupSafe
+    cleanup:
+      - '*'
+    sources:
+      # Jinja2 builds with flit_core as its backend. The GNOME SDK happens to
+      # ship flit_core; the KDE SDK does not, and --no-build-isolation plus a
+      # sandbox with no network means pip cannot go and fetch it. Declare it.
+      - type: file
+        url: https://files.pythonhosted.org/packages/69/59/b6fc2188dfc7ea4f936cd12b49d707f66a1cb7a1d2c16172963534db741b/flit_core-3.12.0.tar.gz
+        sha256: 18f63100d6f94385c6ed57a72073443e1a71a4acb4339491615d0f16d6ff01b2
+      - type: file
+        url: https://files.pythonhosted.org/packages/05/8e/961c0007c59b8dd7729d542c61a4d537767a59645b82a0b521206e1e25c2/pyyaml-6.0.3.tar.gz
+        sha256: d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f
+      - type: file
+        url: https://files.pythonhosted.org/packages/df/bf/f7da0350254c0ed7c72f3e33cef02e048281fec7ecec5f032d4aac52226b/jinja2-3.1.6.tar.gz
+        sha256: 0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d
+      - type: file
+        url: https://files.pythonhosted.org/packages/7e/99/7690b6d4034fffd95959cbe0c02de8deb3098cc577c67bb6a24fe5d7caa7/markupsafe-3.0.3.tar.gz
+        sha256: 722695808f4b6457b320fdc131280796bdceb04ab50fe1795cd540799ebe1698
+
+  - name: fujinet-go-apple2
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DFRONTEND=gnome
+      - -DWITH_WEBVIEW=ON     # webkitgtk-6.0 ships in the GNOME runtime
+      # Boost from the module above, by explicit path: the AppleWin tree is
+      # compiled as a subdirectory and looks it up through Boost_INCLUDE_DIRS.
+      - -DAPPLE2_BOOST_INCLUDE_DIR=/app/include
+      # The Apple II system ROMs are Apple copyrighted firmware. AppleWin
+      # itself has embedded them for over a decade of constant public use, and
+      # this project follows that precedent so the flatpak boots out of the
+      # box like every other artifact CI publishes. See COMPLIANCE.md.
+      #
+      # For a build that must not carry Apple's firmware (e.g. under a Linux
+      # distribution's own packaging policy), flip this to OFF; the app then
+      # ships the "Import System ROMs..." path for the user to supply their
+      # own.
+      - -DWITH_APPLE_ROMS=OFF
+    build-options:
+      env:
+        # Where the FujiNet build finds the static mbedTLS built above.
+        MBEDTLS_ROOT_DIR: /app
+    sources:
+      - type: git
+        url: https://github.com/FujiNetWIFI/fujinet-go-apple2-desktop
+        tag: v0.5.2
+        commit: d31dcb138a1e891d602017c351732b03809757b8
+      - type: git
+        url: https://github.com/FujiNetWIFI/AppleWin
+        commit: 25e8ddd139f9ebe02c55e94463e8b876ddd1afc1
+        dest: third_party/applewin
+      - type: git
+        url: https://github.com/FujiNetWIFI/fujinet-firmware
+        commit: 13465cdd044304ff96ad41a5f029087b28bed17f
+        dest: third_party/fujinet-firmware
