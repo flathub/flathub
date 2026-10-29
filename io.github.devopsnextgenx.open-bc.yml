@@ -1,0 +1,64 @@
+# Flatpak manifest used by `scripts/build.sh -p lin -s flatpak`.
+# For Flathub/offline builds, generate cargo-sources.json from the pinned
+# open-bc Cargo.lock with flatpak-cargo-generator before building.
+app-id: io.github.devopsnextgenx.open-bc
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: openbc
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri          # 3D compare uses OpenGL
+  - --share=network       # SFTP / FTP remote browsing
+  - --filesystem=host     # comparing arbitrary folders is the point of the app
+  - --socket=pulseaudio   # media compare playback
+modules:
+  - name: openbc
+    buildsystem: cmake-ninja
+    # Install both project license texts explicitly into the application image.
+    post-install:
+      - |
+        set -eu
+        find_license() {
+          name="$1"
+          for candidate in "$name" "../$name" "../../$name"; do
+            if [ -f "$candidate" ]; then
+              printf '%s\n' "$candidate"
+              return 0
+            fi
+          done
+          echo "ERROR: $name was not found in the source/build directory" >&2
+          exit 1
+        }
+        install -Dm0644 "$(find_license LICENSE-MIT)" "$FLATPAK_DEST/share/licenses/$FLATPAK_ID/openbc/LICENSE-MIT"
+        install -Dm0644 "$(find_license LICENSE-APACHE)" "$FLATPAK_DEST/share/licenses/$FLATPAK_ID/openbc/LICENSE-APACHE"
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/openbc/cargo
+        CARGO_NET_OFFLINE: 'true'
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCPACK_PACKAGE_VERSION=v1.0.27
+      - -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+      - -DFETCHCONTENT_SOURCE_DIR_CORROSION=/run/build/openbc/corrosion-src
+    sources:
+      # 1. App source pinned to the latest release (tag + verified commit SHA).
+      - type: git
+        url: https://github.com/devopsnextgenx/open-bc.git
+        tag: v1.0.27
+        commit: dab4ab1303b987bf94afe89a75fd8491f2fa26ac
+
+      # 2. Offline Rust dependencies generated from this release's Cargo.lock.
+      - cargo-sources.json
+
+      # 3. Local Corrosion checkout prevents FetchContent from cloning at build time.
+      - type: git
+        url: https://github.com/corrosion-rs/corrosion.git
+        tag: v0.6.1
+        commit: 1499b14e4906a2890f5cee1547c8848db261753d
+        dest: corrosion-src
