@@ -112,6 +112,10 @@ for repo in "${repos[@]}"; do
     checker_apps+=("$repo")
 done
 
+checked_apps=0
+outdated_apps=0
+failed_apps=()
+
 for repo in "${checker_apps[@]}"; do
     FEDC_OPTS=()
 
@@ -145,5 +149,44 @@ for repo in "${checker_apps[@]}"; do
     fi
 
     echo "==> checking ${repo}"
-    /app/flatpak-external-data-checker --verbose --update "${FEDC_OPTS[@]}" "$repo/$manifest" || true
+    ((checked_apps += 1))
+    if /app/flatpak-external-data-checker --verbose --update "${FEDC_OPTS[@]}" "$repo/$manifest"; then
+        status=0
+    else
+        status=$?
+    fi
+    # FEDC uses a bitmask: 1 = errors, 2 = outdated with --check-outdated.
+    # Outdated-only is not a failure; unknown codes and signals are failures.
+    case "$status" in
+        0) ;;
+        2) ((outdated_apps += 1)) ;;
+        *) failed_apps+=("| $repo | $status |") ;;
+    esac
 done
+
+print_check_summary() {
+    echo "## External data checker summary"
+    echo
+    echo "Checked: $checked_apps; failed: ${#failed_apps[@]}; outdated-only: $outdated_apps."
+    if ((${#failed_apps[@]})); then
+        echo
+        echo "| Application | Checker exit code |"
+        echo "| --- | --- |"
+        printf '%s\n' "${failed_apps[@]}"
+        echo
+        echo "Exit codes alone cannot distinguish handled checker errors from crashes."
+    fi
+}
+
+print_check_summary
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    if ! print_check_summary >> "$GITHUB_STEP_SUMMARY"; then
+        echo "Failed to write GitHub step summary" >&2
+        exit 1
+    fi
+fi
+
+if ((${#failed_apps[@]})); then
+    exit 1
+fi
+exit 0
