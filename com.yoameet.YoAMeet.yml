@@ -1,0 +1,92 @@
+# YoA Meet — Flatpak / Flathub
+#
+# App ID : com.yoameet.YoAMeet
+# Binary : yoa (Flutter Linux x86_64 bundle)
+#
+# Source archive URL + sha256 below must match the public GitHub Release asset.
+
+id: com.yoameet.YoAMeet
+runtime: org.freedesktop.Platform
+runtime-version: "26.08"
+sdk: org.freedesktop.Sdk
+command: yoa
+
+finish-args:
+  # Network (LiveKit / Firebase / API)
+  - --share=network
+  - --share=ipc
+  # Display
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  # Microphone / speakers (PipeWire Pulse compat)
+  - --socket=pulseaudio
+  # Camera: Flutter WebRTC / LiveKit uses V4L2 (/dev/video*).
+  # PipeWire session alone is not enough — TrackCreateException without this.
+  # Tested 2026-09-12: mic OK with pulse only; cam requires --device=all.
+  - --device=all
+  # PipeWire session (screen share / modern capture paths)
+  - --filesystem=xdg-run/pipewire-0
+  # LiveKit connectivity_plus → NetworkManager (filtered; no --socket=system-bus)
+  - --system-talk-name=org.freedesktop.NetworkManager
+  # Desktop notifications
+  - --talk-name=org.freedesktop.Notifications
+  # Keyring (flutter_secure_storage / libsecret)
+  - --talk-name=org.freedesktop.secrets
+  # File exports use the portal / file chooser (no blanket XDG dirs)
+  # Theme / cursors
+  - --env=XDG_DATA_DIRS=/app/share:/usr/share:/usr/share/runtime/share
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - "*.a"
+  - "*.la"
+
+modules:
+  - libsecret.yaml
+
+  - name: yoameet
+    buildsystem: simple
+    only-arches:
+      - x86_64
+    build-commands:
+      # Flutter layout: binary + lib/ + data/ side by side (RPATH $ORIGIN/lib)
+      # yoa_vb_segd: helper process for virtual background (ONNX segmentation)
+      - install -d /app/yoa
+      - cp -a yoa yoa_vb_segd lib data /app/yoa/
+      - chmod 755 /app/yoa/yoa /app/yoa/yoa_vb_segd
+      # Wrapper on PATH
+      - install -D yoameet-wrapper.sh /app/bin/yoa
+      # Store metadata
+      - install -Dm644 com.yoameet.YoAMeet.desktop /app/share/applications/com.yoameet.YoAMeet.desktop
+      - install -Dm644 com.yoameet.YoAMeet.metainfo.xml /app/share/metainfo/com.yoameet.YoAMeet.metainfo.xml
+      - |
+        for s in 64 128 256 512; do
+          install -Dm644 "icons/hicolor/${s}x${s}/apps/com.yoameet.YoAMeet.png" \
+            "/app/share/icons/hicolor/${s}x${s}/apps/com.yoameet.YoAMeet.png"
+        done
+    sources:
+      - type: archive
+        url: https://github.com/Yonky2022/yoameet-linux-releases/releases/download/v1.0.10.49/yoameet-linux-1.0.10-49-release.tar.gz
+        sha256: "439c0a5f895655ca09167ec1d87b17ed368a40af0fff72ba52cfc7ccd64d1c96"
+        # x-checker-data: enable when release naming is stable
+        # x-checker-data:
+        #   type: json
+        #   url: https://api.github.com/repos/Yonky2022/yoameet-linux-releases/releases/latest
+        #   version-query: .tag_name
+        #   url-query: .assets[] | select(.name|test("linux.*\\.tar\\.gz$")) | .browser_download_url
+
+      - type: file
+        path: yoameet-wrapper.sh
+
+      - type: file
+        path: com.yoameet.YoAMeet.desktop
+
+      - type: file
+        path: com.yoameet.YoAMeet.metainfo.xml
+
+      - type: dir
+        path: icons
+        dest: icons
