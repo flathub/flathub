@@ -1,135 +1,44 @@
 app-id: io.github.paterkleomenis.Connected
 runtime: org.gnome.Platform
-runtime-version: "50"
+runtime-version: "51"
 sdk: org.gnome.Sdk
-# The GNOME runtime bundles WebKitGTK (required by the Dioxus/wry webview) and
-# is based on the Freedesktop 25.08 runtime, so the rust-stable toolchain
-# extension is resolved from that base version (25.08).
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
 command: connected-desktop
 
 finish-args:
-  # Local-network device discovery (mDNS) and QUIC transfers between devices,
-  # plus the optional GitHub release-notes check for update notifications.
-  # Transfers themselves are peer-to-peer on the LAN; no servers are involved.
   - --share=network
-  # X11 shared memory; required together with --socket=x11 below.
   - --share=ipc
-  # arboard needs X11 as a fallback because Mutter does not implement the
-  # Wayland data-control protocol. fallback-x11 is not enough on a Wayland
-  # host session (see `ClipboardCache` in desktop/src/utils.rs).
+  - --socket=wayland
   - --socket=x11
-  # No --socket=wayland on purpose: Flatpak's own Wayland socket can hide
-  # the compositor's data-control support from arboard/wl-clipboard-rs (see
-  # commit 2d3d6b8 "fix(linux): ultimate clipboard fix"). Instead, the
-  # wrapper script (connected-desktop-wayland-socket) picks up the host's
-  # socket mounted directly through the grants below and exports
-  # WAYLAND_DISPLAY before exec'ing the real binary.
-  # Sockets 0 ... 32. A reasonable amount, per the Wayland server
-  # implementation: https://wayland.freedesktop.org/docs/html/apc.html,
-  # in function wl_display_add_socket_auto.
-  - --filesystem=xdg-run/wayland-0
-  - --filesystem=xdg-run/wayland-1
-  - --filesystem=xdg-run/wayland-2
-  - --filesystem=xdg-run/wayland-3
-  - --filesystem=xdg-run/wayland-4
-  - --filesystem=xdg-run/wayland-5
-  - --filesystem=xdg-run/wayland-6
-  - --filesystem=xdg-run/wayland-7
-  - --filesystem=xdg-run/wayland-8
-  - --filesystem=xdg-run/wayland-9
-  - --filesystem=xdg-run/wayland-10
-  - --filesystem=xdg-run/wayland-11
-  - --filesystem=xdg-run/wayland-12
-  - --filesystem=xdg-run/wayland-13
-  - --filesystem=xdg-run/wayland-14
-  - --filesystem=xdg-run/wayland-15
-  - --filesystem=xdg-run/wayland-16
-  - --filesystem=xdg-run/wayland-17
-  - --filesystem=xdg-run/wayland-18
-  - --filesystem=xdg-run/wayland-19
-  - --filesystem=xdg-run/wayland-20
-  - --filesystem=xdg-run/wayland-21
-  - --filesystem=xdg-run/wayland-22
-  - --filesystem=xdg-run/wayland-23
-  - --filesystem=xdg-run/wayland-24
-  - --filesystem=xdg-run/wayland-25
-  - --filesystem=xdg-run/wayland-26
-  - --filesystem=xdg-run/wayland-27
-  - --filesystem=xdg-run/wayland-28
-  - --filesystem=xdg-run/wayland-29
-  - --filesystem=xdg-run/wayland-30
-  - --filesystem=xdg-run/wayland-31
-  - --filesystem=xdg-run/wayland-32
-  # Why, Canonical?
-  # https://canonical.com/mir/docs/stable/tutorial/write-your-first-wayland-compositor/#run-the-compositor
-  - --filesystem=xdg-run/wayland-99
-  # GPU acceleration for the WebKitGTK webview.
   - --device=dri
-  # Core feature: browsing and transferring files between devices. Remote
-  # peers browse the sender's real filesystem and received files are saved
-  # at user-chosen locations, so the whole host filesystem must be visible
-  # (this is a file-transfer tool, like a file manager).
+  # File-transfer app: peers browse the sender's shared folders and received
+  # files are saved to user-chosen locations.
   - --filesystem=host
-  # Desktop notifications (transfer complete, pairing requests, ...).
   - --talk-name=org.freedesktop.Notifications
-  # Remote media control of running players (MPRIS) ...
   - --talk-name=org.mpris.MediaPlayer2.*
-  # ... and exposing this app as a controllable player itself.
   - --own-name=org.mpris.MediaPlayer2.connected
-  # Tray icon (StatusNotifierItem).
   - --talk-name=org.kde.StatusNotifierWatcher
-  # Marks this as a Flathub build: updates are delivered by the Flathub
-  # repository, so the app disables its in-app updater (see is_flathub_build
-  # in core/src/update.rs). Note there is deliberately NO
-  # --talk-name=org.freedesktop.Flatpak: Flathub apps must not self-install
-  # update bundles.
+  # Updates are delivered by Flathub; the app skips its in-app updater.
   - --env=CONNECTED_FLATHUB_BUILD=1
 
 build-options:
-  # Rust toolchain from the rust-stable SDK extension (no rustup, no
-  # toolchain downloads at build time).
   append-path: /usr/lib/sdk/rust-stable/bin
   env:
-    # Vendored crates extracted here by cargo-sources.json (see sources);
-    # keeps the build fully offline.
     CARGO_HOME: /run/build/connected/cargo
 
 modules:
   - name: connected
     buildsystem: simple
     build-commands:
-      # All dependencies are vendored via cargo-sources.json, so the build
-      # needs no network access. --locked refuses to touch Cargo.lock, which
-      # keeps the build identical to the vendored sources.
       - cargo build --release --offline --locked -p connected-desktop
-
-      # Binary + wrapper. The wrapper finds the host's Wayland socket (see
-      # the --filesystem=xdg-run/wayland-* notes above) and exports
-      # WAYLAND_DISPLAY before exec'ing the real binary.
-      - install -Dm755 target/release/connected-desktop /app/bin/connected-desktop-bin
-      - install -Dm755 packaging/flatpak/connected-desktop-wayland-socket /app/bin/connected-desktop
-
-      # Desktop file, AppStream metainfo and icon ship in the upstream
-      # source tree (a Flathub submission requirement: metadata must be
-      # integrated upstream, not copied into the submission).
+      - install -Dm755 target/release/connected-desktop /app/bin/connected-desktop
       - install -Dm644 packaging/flatpak/io.github.paterkleomenis.Connected.desktop /app/share/applications/io.github.paterkleomenis.Connected.desktop
       - install -Dm644 packaging/flatpak/io.github.paterkleomenis.Connected.metainfo.xml /app/share/metainfo/io.github.paterkleomenis.Connected.metainfo.xml
       - install -Dm644 packaging/flatpak/io.github.paterkleomenis.Connected.png /app/share/icons/hicolor/512x512/apps/io.github.paterkleomenis.Connected.png
     sources:
-      # The 3.5.4 tag contains the io.github.paterkleomenis.* metadata file
-      # names, the Flathub-aware updater code (CONNECTED_FLATHUB_BUILD) and
-      # the Background-portal autostart. For the submission copy of this
-      # manifest, pin the resolved commit next to the tag for
-      # reproducibility (Flathub convention):
-      #   git rev-parse 3.5.4
       - type: git
         url: https://github.com/paterkleomenis/connected.git
         tag: 3.5.4
         commit: 9e75d6f990cb5bfbe2db5b1cea075d69541a2a32
-      # Generated with flatpak-builder-tools' flatpak-cargo-generator.py
-      # from Cargo.lock. Regenerate whenever Cargo.lock changes:
-      #   python3 flatpak-cargo-generator.py Cargo.lock \
-      #     -o packaging/flatpak/cargo-sources.json
       - cargo-sources.json
