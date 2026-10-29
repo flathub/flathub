@@ -1,0 +1,183 @@
+app-id: io.github.lemonxah.ZestBay
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  # libclang for bindgen (pipewire/libspa-sys generate bindings at build time).
+  - org.freedesktop.Sdk.Extension.llvm21
+command: zestbay
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  # Full X11, not fallback-x11: CLAP/VST3/LV2 plugin editors are X11 windows.
+  - --socket=x11
+  - --device=dri
+  # The whole PipeWire graph (nodes, ports, links), not just our own streams.
+  - --filesystem=xdg-run/pipewire-0
+  # System tray (StatusNotifierItem): talk to the watcher and own the item's
+  # name, which is org.kde.StatusNotifierItem-<pid>-1 (pid 2 in the sandbox).
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --own-name=org.kde.StatusNotifierItem-2-1
+  # Plugins in ~/.lv2, ~/.clap, ~/.vst3, and the data/licence/sample files
+  # they read from the home directory.
+  - --filesystem=home
+  # Host plugin directories (/usr/lib/{lv2,clap,vst3}), seen under
+  # /run/host/usr. Plugins built against host libraries may not load inside
+  # the runtime; the sandbox probe keeps a failing one from crashing ZestBay.
+  - --filesystem=host-os:ro
+
+add-extensions:
+  # Plugins packaged as Flatpak extensions (org.freedesktop.LinuxAudio.Plugins.*)
+  # are mounted here; src/plugin/paths.rs searches it.
+  org.freedesktop.LinuxAudio.Plugins:
+    directory: extensions/Plugins
+    version: '25.08'
+    add-ld-path: lib
+    merge-dirs: lv2;clap;vst3;ladspa;dssi
+    subdirectories: true
+    no-autodownload: true
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/doc
+  - /share/man
+  - '*.a'
+
+modules:
+  # ---- LV2 host stack (not in the KDE runtime) ----
+  - name: lv2
+    buildsystem: meson
+    config-opts:
+      - -Ddocs=disabled
+      - -Dplugins=disabled
+      - -Dtests=disabled
+      - -Dlv2dir=/app/lib/lv2
+    sources:
+      - type: archive
+        url: https://lv2plug.in/spec/lv2-1.18.10.tar.xz
+        sha256: 78c51bcf21b54e58bb6329accbb4dae03b2ed79b520f9a01e734bd9de530953f
+
+  - name: zix
+    buildsystem: meson
+    config-opts:
+      - -Dbenchmarks=disabled
+      - -Ddocs=disabled
+      - -Dtests=disabled
+      - -Dtests_cpp=disabled
+    sources:
+      - type: archive
+        url: https://download.drobilla.net/zix-0.8.2.tar.xz
+        sha256: 4c73aab0f8cbbfe56b00c8c6d648316021e699c5ae6cbf254391ef309047e67b
+
+  - name: serd
+    buildsystem: meson
+    config-opts:
+      - -Ddocs=disabled
+      - -Dman=disabled
+      - -Dtests=disabled
+      - -Dtools=disabled
+    sources:
+      - type: archive
+        url: https://download.drobilla.net/serd-0.32.10.tar.xz
+        sha256: b0e93b49e52f01a049475b7886ef140407115a32d3b1e5dc5f95141c88275d1c
+
+  - name: sord
+    buildsystem: meson
+    config-opts:
+      - -Ddocs=disabled
+      - -Dman=disabled
+      - -Dtests=disabled
+      - -Dtools=disabled
+    sources:
+      - type: archive
+        url: https://download.drobilla.net/sord-0.16.22.tar.xz
+        sha256: bb23b34b216579136795d518cffa73d91cf205594ce9accebfd408afb839173f
+
+  - name: sratom
+    buildsystem: meson
+    config-opts:
+      - -Ddocs=disabled
+      - -Dtests=disabled
+    sources:
+      - type: archive
+        url: https://download.drobilla.net/sratom-0.6.22.tar.xz
+        sha256: 0209b7d0f22c96abb416722ed735b0933be47931ecff4aa4b26ded7760b4f252
+
+  - name: lilv
+    buildsystem: meson
+    config-opts:
+      - -Dbindings_py=disabled
+      - -Ddocs=disabled
+      - -Dtests=disabled
+      - -Dtools=disabled
+      # ZestBay also sets LV2_PATH at startup to add the host directories.
+      - -Ddefault_lv2_path=~/.lv2:/app/extensions/Plugins/lv2:/app/lib/lv2
+    sources:
+      - type: archive
+        url: https://download.drobilla.net/lilv-0.28.0.tar.xz
+        sha256: 8dcb70adb5cf072335115a6b091f4113710bdc73abaadaa3f9e9c1e55957b149
+
+  # In-process LV2 GTK/X11 UIs (src/lv2/ui.rs). GTK 3 comes from the runtime.
+  - name: suil
+    buildsystem: meson
+    config-opts:
+      - -Dcocoa=disabled
+      - -Ddocs=disabled
+      - -Dgtk2=disabled
+      - -Dgtk3=enabled
+      - -Dqt5=disabled
+      - -Dqt6=disabled
+      - -Dtests=disabled
+      - -Dx11=enabled
+    sources:
+      - type: archive
+        url: https://download.drobilla.net/suil-0.10.26.tar.xz
+        sha256: 62808916602c47d201a1ec2d246323a8048243f2bf972f859f0db1db4662ee43
+
+  # ---- ZestBay ----
+  - name: zestbay
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm21/bin
+      env:
+        CARGO_HOME: /run/build/zestbay/cargo
+        LIBCLANG_PATH: /usr/lib/sdk/llvm21/lib
+        CARGO_NET_OFFLINE: 'true'
+    build-commands:
+      - cargo --offline build --release --workspace
+      - install -Dm755 target/release/zestbay /app/bin/zestbay
+      - install -Dm755 target/release/zestbay-ui-bridge /app/lib/zestbay/zestbay-ui-bridge
+      - mkdir -p /app/extensions/Plugins
+      - install -Dm644 pkg/flatpak/io.github.lemonxah.ZestBay.desktop -t /app/share/applications
+      - install -Dm644 pkg/flatpak/io.github.lemonxah.ZestBay.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 images/logo/zestbay-launcher.svg
+        /app/share/icons/hicolor/scalable/apps/io.github.lemonxah.ZestBay.svg
+      - |
+        for size in 16 22 32 48 128 256 512; do
+          install -Dm644 pkg/flatpak/icons/${size}x${size}/io.github.lemonxah.ZestBay.png \
+            /app/share/icons/hicolor/${size}x${size}/apps/io.github.lemonxah.ZestBay.png
+        done
+      - install -Dm644 LICENSE /app/share/licenses/io.github.lemonxah.ZestBay/LICENSE
+    sources:
+      # Local builds use the working tree. For Flathub, replace this with the
+      # release tarball, e.g.:
+      #   - type: archive
+      #     url: https://github.com/lemonxah/zestbay/archive/refs/tags/v1.0.0.tar.gz
+      #     sha256: <sha256 of that tarball>
+      # The manifest lives at the repo root (Flathub convention), so the
+      # sandboxed builder (flathub-build) accepts this directory source.
+      - type: dir
+        path: .
+        skip:
+          - .git
+          - target
+          - .flatpak-builder
+          - build-dir
+          - builddir
+          - repo
+      # Generated from Cargo.lock by `just flatpak-sources` (next to this
+      # manifest, as in the Flathub submission); see pkg/flatpak/README.md.
+      - cargo-sources.json
