@@ -1,0 +1,92 @@
+# Flathub manifest for the Codemany desktop app (2026-10-29).
+# The Flathub id is com.codemany.Codemany: Flathub forbids ids ending in
+# .desktop. The .deb and apt keep com.codemany.desktop; the metainfo's
+# <provides><id> links the two. The app reads its id from $FLATPAK_ID.
+#
+# The app is proprietary (metainfo: LicenseRef-proprietary), so nothing is
+# built from source: the signed release .deb is downloaded on the user's
+# machine as extra-data and apply_extra.sh unpacks its binary into
+# /app/extra. The desktop file, icon and metainfo are installed at build time
+# under the app id. The app is a window for the codemany service, which runs
+# on the host (installed from codemany.com/download); the sandbox only needs
+# to reach it:
+#   --share=network          the daemon's dashboard on 127.0.0.1:<port>,
+#                            remote machines, codemany.com
+#   --share=ipc, wayland, fallback-x11, dri
+#                            the WebKitGTK window
+#   --filesystem=~/.codemany:ro
+#                            config.json (listen address), dashboard.json
+#                            (address + id), machine-id and local-admin.token
+#                            (discover.rs, token.rs); the app never writes there
+#   --talk-name=org.freedesktop.Notifications   failed-job notifications
+#   --talk-name=org.kde.StatusNotifierWatcher   the tray icon
+#   --talk-name=org.freedesktop.systemd1        start the daemon's systemd user
+#                            service when it is down (host_dbus.rs)
+# Start at login goes through the Background portal, which needs no
+# permission. Inside the sandbox the app's own updater is off (sandbox.rs).
+#
+# Each release: x-checker-data (latest.txt) opens the update PR on Flathub.
+id: com.codemany.Codemany
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: codemany-desktop
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --filesystem=~/.codemany:ro
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.systemd1
+
+modules:
+  # Tauri's tray icon dlopens libayatana-appindicator3, which the GNOME
+  # runtime does not ship.
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+
+  - name: codemany-desktop
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 apply_extra.sh ${FLATPAK_DEST}/bin/apply_extra
+      - install -Dm755 codemany-desktop.sh ${FLATPAK_DEST}/bin/codemany-desktop
+      - install -Dm644 ${FLATPAK_ID}.desktop -t ${FLATPAK_DEST}/share/applications
+      - install -Dm644 ${FLATPAK_ID}.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo
+      - install -Dm644 ${FLATPAK_ID}.svg -t ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps
+    sources:
+      - type: file
+        path: apply_extra.sh
+      - type: file
+        path: codemany-desktop.sh
+      - type: file
+        path: com.codemany.Codemany.desktop
+      - type: file
+        path: com.codemany.Codemany.metainfo.xml
+      - type: file
+        path: com.codemany.Codemany.svg
+      - type: extra-data
+        filename: codemany-desktop.deb
+        only-arches: [x86_64]
+        url: https://storage.googleapis.com/codemany-releases/download/linux/codemany-desktop_0.42.0_amd64.deb
+        sha256: d9559a7eeabe99150e1da59e5b3dd70373d0cfebd41cd909ba424809e79de9d2
+        size: 3780698
+        x-checker-data:
+          type: html
+          url: https://codemany.com/download/linux/latest.txt
+          version-pattern: ^([0-9]+\.[0-9]+\.[0-9]+)\s*$
+          url-template: https://storage.googleapis.com/codemany-releases/download/linux/codemany-desktop_${version}_amd64.deb
+          is-main-source: true
+      - type: extra-data
+        filename: codemany-desktop.deb
+        only-arches: [aarch64]
+        url: https://storage.googleapis.com/codemany-releases/download/linux/codemany-desktop_0.42.0_arm64.deb
+        sha256: 5bc0307bdfc180275f118fcf3e258dca7ff0a396379ea112efb6e0c9716e033a
+        size: 3624656
+        x-checker-data:
+          type: html
+          url: https://codemany.com/download/linux/latest.txt
+          version-pattern: ^([0-9]+\.[0-9]+\.[0-9]+)\s*$
+          url-template: https://storage.googleapis.com/codemany-releases/download/linux/codemany-desktop_${version}_arm64.deb
