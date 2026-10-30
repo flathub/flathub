@@ -3,7 +3,6 @@ runtime: org.freedesktop.Platform
 runtime-version: '26.08'
 sdk: org.freedesktop.Sdk
 sdk-extensions:
-  # Gradle uses JDK 27; building JBR requires a JDK 25 boot JDK.
   - org.freedesktop.Sdk.Extension.openjdk
   - org.freedesktop.Sdk.Extension.openjdk25
 command: vivenotes
@@ -15,30 +14,39 @@ finish-args:
   - --device=dri
 
 modules:
-  # JBR provides the native Wayland toolkit. Match JetBrains' mkimages_x64.sh configuration.
   - name: jbr
-    buildsystem: simple
+    buildsystem: autotools
+    no-autogen: true
+    no-make-install: true
     build-options:
       no-debuginfo: true
-    build-commands:
-      - >-
-        bash configure
-        --with-boot-jdk=/usr/lib/sdk/openjdk25/jvm/openjdk-25
-        --with-debug-level=release
-        --with-native-debug-symbols=none
-        --with-vendor-name="JetBrains s.r.o."
-        --with-vendor-version-string=JBR-25.0.4.1+1-635.75-nomod
-        $(cat jb/project/tools/common/static_conf_args.txt)
-        --with-jvm-features=shenandoahgc
-        --with-version-pre=
-        --with-version-build=1
-        --with-version-opt=b635.75
-        --enable-cds=yes
-        --with-vulkan
-        --with-wayland-protocols=/usr/share/wayland-protocols
-        --disable-warnings-as-errors
-        --with-jobs=${FLATPAK_BUILDER_N_JOBS}
-      - make images CONF=linux-x86_64-server-release
+      env:
+        CC: /usr/bin/gcc
+        CXX: /usr/bin/g++
+    config-opts:
+      - --with-boot-jdk=/usr/lib/sdk/openjdk25/jvm/openjdk-25
+      - --with-debug-level=release
+      - --with-native-debug-symbols=none
+      - --with-vendor-name=JetBrains s.r.o.
+      - --with-vendor-version-string=JBR-25.0.4.1+1-635.75-nomod
+      - --with-vendor-url=https://www.jetbrains.com/
+      - --with-vendor-bug-url=https://youtrack.jetbrains.com/issues/JBR
+      - --with-vendor-vm-bug-url=https://youtrack.jetbrains.com/issues/JBR
+      - --with-jvm-features=shenandoahgc
+      - --with-version-pre=
+      - --with-version-build=1
+      - --with-version-opt=b635.75
+      - --enable-cds=yes
+      - --enable-ccache
+      - --with-vulkan
+      - --with-wayland-protocols=/usr/share/wayland-protocols
+      - --disable-warnings-as-errors
+    make-args:
+      - -j1
+      - images
+      - CONF=linux-x86_64-server-release
+      - JOBS=$(FLATPAK_BUILDER_N_JOBS)
+    post-install:
       - >-
         build/linux-x86_64-server-release/images/jdk/bin/jlink
         --module-path build/linux-x86_64-server-release/images/jmods
@@ -51,15 +59,10 @@ modules:
         url: https://github.com/JetBrains/JetBrainsRuntime/archive/refs/tags/jbr-release-25.0.4.1b635.75.tar.gz
         sha256: afb004ea032fa934886a1239ebf0b13d91b86af73c4f23308c38ec7fd1575642
 
-  # Use the runtime's Python with the packages pinned in uv.lock.
   - name: math-python
     buildsystem: simple
     build-commands:
-      - python3 -m venv ${FLATPAK_DEST}/lib/vivenotes/math-python
-      - ${FLATPAK_DEST}/lib/vivenotes/math-python/bin/pip install --no-index --no-deps --no-cache-dir *.whl
-    cleanup:
-      - /lib/vivenotes/math-python/bin/pip*
-      - /lib/vivenotes/math-python/lib/python*/site-packages/pip*
+      - python3 -m pip install --prefix=${FLATPAK_DEST} --no-index --no-deps --no-cache-dir *.whl
     sources:
       - type: file
         url: https://files.pythonhosted.org/packages/a2/09/77d55d46fd61b4a135c444fc97158ef34a095e5681d0a6c10b75bf356191/sympy-1.14.0-py3-none-any.whl
@@ -71,34 +74,48 @@ modules:
         url: https://files.pythonhosted.org/packages/b6/3a/4f2e9d67277cc255a17a34c1b54e02d939ca5991bc596dee3d63e587e512/antlr4_python3_runtime-4.11.1-py3-none-any.whl
         sha256: ff1954eda1ca9072c02bf500387d0c86cb549bef4dbb3b64f39468b547ec5f6b
 
-  # Build libink with ByteInk's CMake setup and upstream/pins.properties dependency versions.
   - name: libink
-    buildsystem: simple
+    buildsystem: cmake-ninja
+    builddir: true
+    subdir: byteink/native/cmake
     build-options:
       env:
         JAVA_HOME: /usr/lib/sdk/openjdk25/jvm/openjdk-25
-    build-commands:
-      - for patch in byteink/native/patches/*.patch; do patch -d ink -p1 < "$patch"; done
-      - >-
-        cmake -S byteink/native/cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-        -DINK_SOURCE_DIR=$PWD/ink -DABSEIL_SOURCE_DIR=$PWD/abseil-cpp
-        -DPROTOBUF_SOURCE_DIR=$PWD/protobuf -DZLIB_SOURCE_DIR=$PWD/zlib
-        -DLIBTESS2_SOURCE_DIR=$PWD/libtess2
-      - ninja -C build ink
-      - install -Dm755 build/libink.so ${FLATPAK_DEST}/lib/libink.so
-      - install -Dm644 ink/LICENSE ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/ink/LICENSE
-      - install -Dm644 abseil-cpp/LICENSE ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/abseil-cpp/LICENSE
-      - install -Dm644 protobuf/LICENSE ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/protobuf/LICENSE
-      - install -Dm644 zlib/LICENSE ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/zlib/LICENSE
-      - install -Dm644 libtess2/LICENSE.txt ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/libtess2/LICENSE.txt
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DINK_SOURCE_DIR=/run/build/libink/ink
+      - -DABSEIL_SOURCE_DIR=/run/build/libink/abseil-cpp
+      - -DPROTOBUF_SOURCE_DIR=/run/build/libink/protobuf
+      - -DZLIB_SOURCE_DIR=/run/build/libink/zlib
+      - -DLIBTESS2_SOURCE_DIR=/run/build/libink/libtess2
+    post-install:
+      - install -Dm644 /run/build/libink/ink/LICENSE ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/ink/LICENSE
+      - install -Dm644 /run/build/libink/abseil-cpp/LICENSE ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/abseil-cpp/LICENSE
+      - install -Dm644 /run/build/libink/protobuf/LICENSE ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/protobuf/LICENSE
+      - install -Dm644 /run/build/libink/zlib/LICENSE ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/zlib/LICENSE
+      - install -Dm644 /run/build/libink/libtess2/LICENSE.txt ${FLATPAK_DEST}/share/licenses/${FLATPAK_ID}/libtess2/LICENSE.txt
     sources:
       - type: git
         url: https://github.com/CrownByte0b/ByteInk.git
         commit: 019ebc81b0f43ca3ca81ea4596645c22dabd57b8
         dest: byteink
+      - type: patch
+        path: patches/byteink-install-libink.patch
+        dest: byteink
       - type: git
         url: https://github.com/google/ink.git
         commit: 96e50239e1c8955f7e222301661b595847d7de83
+        dest: ink
+      - type: patch
+        paths:
+          - patches/ink/0001-link-linux-against-bullseye-sysroot.patch
+          - patches/ink/0002-cross-compile-windows-with-zig.patch
+          - patches/ink/0003-use-android-float-angle-arithmetic.patch
+          - patches/ink/0004-use-android-float-magnitude-arithmetic.patch
+          - patches/ink/0005-encode-with-android-gzip.patch
+          - patches/ink/0006-add-owned-geometry-snapshots.patch
+          - patches/ink/0007-add-raw-input-codec.patch
+          - patches/ink/0008-add-rendering-attribute-snapshots.patch
         dest: ink
       - type: git
         url: https://github.com/memononen/libtess2.git
@@ -126,7 +143,6 @@ modules:
         GRADLE_USER_HOME: /run/build/vivenotes/gradle-home
         VIVE_OFFLINE_REPOSITORY: /run/build/vivenotes/offline-repository
     build-commands:
-      # Use the SDK JDK instead of resolving the daemon JDK through Foojay.
       - rm gradle/gradle-daemon-jvm.properties
       - >-
         gradle-dist/bin/gradle --offline --no-daemon --no-configuration-cache
@@ -153,4 +169,7 @@ modules:
         url: https://services.gradle.org/distributions/gradle-9.8.2-bin.zip
         sha256: 21bd5da2de49b642904077f38c0efdc7778e92b3ed0889392dca61b97e389607
         dest: gradle-dist
+      - type: file
+        path: vivenotes
+        dest: packaging/flathub
       - maven-sources.json
