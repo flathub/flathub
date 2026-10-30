@@ -1,4 +1,4 @@
-app-id: org.moonfin.moonfin
+app-id: io.moonfin.moonfin
 runtime: org.gnome.Platform
 runtime-version: '50'
 sdk: org.gnome.Sdk
@@ -8,12 +8,21 @@ command: moonfin
 finish-args:
   - --share=network
   - --socket=fallback-x11
+  - --share=ipc
   - --socket=wayland
-  - --device=dri
+  - --device=all
   - --socket=pulseaudio
-  - --socket=session-bus
+  # MPRIS media controls
+  - --own-name=org.mpris.MediaPlayer2.moonfin
+  # Saved logins (flutter_secure_storage via libsecret)
+  - --talk-name=org.freedesktop.secrets
+  # Keep the screen awake during playback (wakelock_plus)
+  - --talk-name=org.freedesktop.ScreenSaver
+  # Desktop notifications (flutter_local_notifications)
+  - --talk-name=org.freedesktop.Notifications
+  # Online/offline detection (connectivity_plus)
   - --system-talk-name=org.freedesktop.NetworkManager
-  - --filesystem=home
+  - --filesystem=xdg-documents/Moonfin:ro
 
 modules:
   - name: appstream-compose-shim
@@ -80,7 +89,13 @@ modules:
           return 1
         }
 
-        missing_libs="$(ldd /app/moonfin/moonfin 2>/dev/null | awk '/not found/ {print $1}' | sort -u || true)"
+        ldd_output="\$(ldd /app/moonfin/moonfin 2>/dev/null || true)"
+
+        # Only "libfoo.so => not found" lines name a missing library. Symbol
+        # version lines start with the binary path, so matching bare "not found"
+        # reports the binary itself as missing.
+        missing_libs="\$(printf '%s\\n' "\$ldd_output" | awk '\$2 == "=>" && \$3 == "not" && \$4 == "found" {print \$1}' | sort -u)"
+        version_errors="\$(printf '%s\\n' "\$ldd_output" | grep -F 'not found' | grep -v ' => ' || true)"
         if ! resolve_exact_lib libsqlite3.so; then
           missing_libs="$(printf '%s\n%s\n' "$missing_libs" "libsqlite3.so" | awk 'NF' | sort -u)"
         fi
@@ -92,17 +107,26 @@ modules:
           exit 127
         fi
 
+        if [ -n "\$version_errors" ]; then
+          echo "Moonfin cannot start. A library the Flatpak runtime provides is missing" >&2
+          echo "symbols this build needs:" >&2
+          printf '%s\\n' "\$version_errors" >&2
+          echo "The bundled libraries were built against a newer system than the runtime." >&2
+          echo "Please report this output." >&2
+          exit 127
+        fi
+
         exec /app/moonfin/moonfin "$@"
         EOFRUN
       - chmod +x /app/bin/moonfin
       - echo $PWD
-      - '[ -f org.moonfin.moonfin.png ] && cp org.moonfin.moonfin.png /app/share/icons/hicolor/512x512/apps/ || true'
-      - cp org.moonfin.moonfin.desktop /app/share/applications/
-      - cp org.moonfin.moonfin.metainfo.xml /app/share/metainfo/
+      - '[ -f io.moonfin.moonfin.png ] && cp io.moonfin.moonfin.png /app/share/icons/hicolor/512x512/apps/ || true'
+      - cp io.moonfin.moonfin.desktop /app/share/applications/
+      - cp io.moonfin.moonfin.metainfo.xml /app/share/metainfo/
     sources:
       - type: archive
-        url: https://github.com/Moonfin-Client/Moonfin-Core/releases/download/2.6.0/Moonfin_Linux_v2.6.0.tar.gz
-        sha256: 33344d6f285fcd97a3e1e2e295f03bae8396c7a488a1a241aa78750ef2c59c1b
+        url: https://github.com/Moonfin-Client/Moonfin-Core/releases/download/2.8.0/Moonfin_Linux_v2.8.0.tar.gz
+        sha256: af407ce8312457a76e3560151018389f7818a1614660d7b8d0698ff3cc233d84
         dest: .
         only-arches:
           - x86_64
@@ -110,8 +134,8 @@ modules:
           type: git
           tag-pattern: '^([0-9.]+)$'
       - type: archive
-        url: https://github.com/Moonfin-Client/Moonfin-Core/releases/download/2.6.0/Moonfin_LinuxARM64_v2.6.0.tar.gz
-        sha256: f2cf8db9a04bd9abea76d5441f5de973cbab2d0ac980f58140ad2e0471c567d0
+        url: https://github.com/Moonfin-Client/Moonfin-Core/releases/download/2.8.0/Moonfin_LinuxARM64_v2.8.0.tar.gz
+        sha256: a56668082fd3c1c0438862489a5e4b7a400b55fb001de61e62dfb83492340a610
         dest: .
         only-arches:
           - aarch64
@@ -119,9 +143,9 @@ modules:
           type: git
           tag-pattern: '^([0-9.]+)$'
       - type: file
-        path: org.moonfin.moonfin.desktop
+        path: io.moonfin.moonfin.desktop
       - type: file
-        path: org.moonfin.moonfin.metainfo.xml
+        path: io.moonfin.moonfin.metainfo.xml
       - type: file
-        path: org.moonfin.moonfin.png
+        path: io.moonfin.moonfin.png
 
