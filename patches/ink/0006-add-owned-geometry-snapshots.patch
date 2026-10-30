@@ -1,0 +1,242 @@
+diff --git a/ink/jni/BUILD.bazel b/ink/jni/BUILD.bazel
+--- a/ink/jni/BUILD.bazel
++++ b/ink/jni/BUILD.bazel
+@@ -48,6 +48,7 @@
+     deps = [
+         ":android_all_jni",
+         ":byteink_compression_jni",
++        ":byteink_geometry_jni",
+     ],
+ )
+ 
+@@ -86,3 +87,18 @@
+     deps = ["@rules_jni//jni", "@zlib//:zlib"],
+     alwayslink = 1,
+ )
++
++# ByteInk-owned checked snapshots. No changes to the Ink engine or upstream JNI.
++cc_library(
++    name = "byteink_geometry_jni",
++    srcs = ["byteink_geometry_jni.cc"],
++    deps = [
++        "//ink/geometry:mesh",
++        "//ink/geometry:mutable_mesh",
++        "//ink/geometry:point",
++        "//ink/geometry/internal/jni:partitioned_mesh_native_helper",
++        "//ink/strokes/internal/jni:in_progress_stroke_native_helper",
++        "@rules_jni//jni",
++    ],
++    alwayslink = 1,
++)
+diff --git a/ink/jni/byteink_geometry_jni.cc b/ink/jni/byteink_geometry_jni.cc
+new file mode 100644
+--- /dev/null
++++ b/ink/jni/byteink_geometry_jni.cc
+@@ -0,0 +1,207 @@
++// Copyright 2026 ViveNotes
++// SPDX-License-Identifier: Apache-2.0
++// Owned geometry copies over the pinned Ink engine; no native-backed JVM views.
++#include <jni.h>
++
++#include <climits>
++#include <cstddef>
++#include <cstdint>
++#include <cstring>
++
++#include "ink/geometry/internal/jni/partitioned_mesh_native_helper.h"
++#include "ink/geometry/mesh.h"
++#include "ink/geometry/mutable_mesh.h"
++#include "ink/geometry/point.h"
++#include "ink/strokes/internal/jni/in_progress_stroke_native_helper.h"
++
++namespace {
++void Fail(JNIEnv* env, const char* type, const char* message) {
++  jclass error = env->FindClass(type);
++  if (error != nullptr) env->ThrowNew(error, message);
++}
++
++// The owner is a JNI local reference for the entire copy, including GC safepoints.
++// The live accessor's module suffix is part of the pinned alpha06 JVM contract.
++jlong Pointer(JNIEnv* env, jobject owner, const char* accessor) {
++  if (owner == nullptr) {
++    Fail(env, "java/lang/NullPointerException", "Missing Ink geometry owner");
++    return 0;
++  }
++  jclass type = env->GetObjectClass(owner);
++  if (type == nullptr) return 0;
++  jmethodID getter = env->GetMethodID(type, accessor, "()J");
++  env->DeleteLocalRef(type);
++  if (getter == nullptr) return 0;
++  jlong pointer = env->CallLongMethod(owner, getter);
++  if (env->ExceptionCheck()) return 0;
++  if (pointer == 0) Fail(env, "java/lang/IllegalStateException", "Missing native Ink geometry");
++  return pointer;
++}
++
++bool Group(JNIEnv* env, jint group, size_t count) {
++  if (group >= 0 && static_cast<size_t>(group) < count) return true;
++  Fail(env, "java/lang/IllegalArgumentException", "Ink geometry group/coat is out of range");
++  return false;
++}
++
++bool Fits(JNIEnv* env, size_t count, size_t stride = 1) {
++  if (count <= static_cast<size_t>(INT_MAX) / stride) return true;
++  Fail(env, "java/lang/IllegalArgumentException", "Ink snapshot exceeds a JVM array");
++  return false;
++}
++
++template <typename Position>
++jfloatArray Positions(JNIEnv* env, size_t count, Position position) {
++  if (!Fits(env, count, 2)) return nullptr;
++  jfloatArray result = env->NewFloatArray(static_cast<jsize>(count * 2));
++  if (result == nullptr || count == 0) return result;
++  jfloat* values = env->GetFloatArrayElements(result, nullptr);
++  if (values == nullptr) return nullptr;
++  for (size_t i = 0; i < count; ++i) {
++    ink::Point point = position(i);
++    values[2 * i] = point.x;
++    values[2 * i + 1] = point.y;
++  }
++  env->ReleaseFloatArrayElements(result, values, 0);
++  return result;
++}
++
++template <typename Index>
++jintArray Indices(JNIEnv* env, size_t count, Index index) {
++  if (!Fits(env, count)) return nullptr;
++  jintArray result = env->NewIntArray(static_cast<jsize>(count));
++  if (result == nullptr || count == 0) return result;
++  jint* values = env->GetIntArrayElements(result, nullptr);
++  if (values == nullptr) return nullptr;
++  for (size_t i = 0; i < count; ++i) values[i] = index(i);
++  env->ReleaseIntArrayElements(result, values, 0);
++  return result;
++}
++
++template <typename Outline>
++jobjectArray Outlines(JNIEnv* env, size_t count, Outline outline) {
++  if (!Fits(env, count)) return nullptr;
++  jclass type = env->FindClass("[F");
++  if (type == nullptr) return nullptr;
++  jobjectArray result = env->NewObjectArray(static_cast<jsize>(count), type, nullptr);
++  env->DeleteLocalRef(type);
++  if (result == nullptr) return nullptr;
++  for (size_t i = 0; i < count; ++i) {
++    jfloatArray points = outline(i);
++    if (points == nullptr) return nullptr;
++    env->SetObjectArrayElement(result, static_cast<jsize>(i), points);
++    env->DeleteLocalRef(points);
++    if (env->ExceptionCheck()) return nullptr;
++  }
++  return result;
++}
++
++template <typename Mesh>
++jobjectArray Triangles(JNIEnv* env, size_t count, Mesh mesh) {
++  if (!Fits(env, count)) return nullptr;
++  jclass type = env->FindClass("com/vivenotes/byteink/core/TriangleMesh");
++  if (type == nullptr) return nullptr;
++  jmethodID constructor = env->GetMethodID(type, "<init>", "([F[I)V");
++  if (constructor == nullptr) return nullptr;
++  jobjectArray result = env->NewObjectArray(static_cast<jsize>(count), type, nullptr);
++  if (result == nullptr) return nullptr;
++  for (size_t i = 0; i < count; ++i) {
++    jobject value = mesh(i, type, constructor);
++    if (value == nullptr) return nullptr;
++    env->SetObjectArrayElement(result, static_cast<jsize>(i), value);
++    env->DeleteLocalRef(value);
++    if (env->ExceptionCheck()) return nullptr;
++  }
++  return result;
++}
++
++jobject Mesh(JNIEnv* env, jclass type, jmethodID constructor,
++             jfloatArray positions, jintArray indices) {
++  if (positions == nullptr || indices == nullptr) return nullptr;
++  jobject result = env->NewObject(type, constructor, positions, indices);
++  env->DeleteLocalRef(positions);
++  env->DeleteLocalRef(indices);
++  return result;
++}
++}  // namespace
++
++extern "C" JNIEXPORT jobjectArray JNICALL
++Java_com_vivenotes_byteink_core_InkGeometryNative_finishedOutlines(
++    JNIEnv* env, jobject, jobject owner, jint group) {
++  jlong pointer = Pointer(env, owner, "getNativePointer");
++  if (pointer == 0) return nullptr;
++  const auto& shape = ink::native::CastToPartitionedMesh(pointer);
++  if (!Group(env, group, shape.RenderGroupCount())) return nullptr;
++  const auto meshes = shape.RenderGroupMeshes(group);
++  return Outlines(env, shape.OutlineCount(group), [&](size_t i) {
++    const auto outline = shape.Outline(group, i);
++    return Positions(env, outline.size(), [&](size_t vertex) {
++      const auto pair = outline[vertex];
++      return meshes[pair.mesh_index].VertexPosition(pair.vertex_index);
++    });
++  });
++}
++
++extern "C" JNIEXPORT jobjectArray JNICALL
++Java_com_vivenotes_byteink_core_InkGeometryNative_liveOutlines(
++    JNIEnv* env, jobject, jobject owner, jint coat) {
++  jlong pointer = Pointer(env, owner, "getNativePointer$ink_strokes");
++  if (pointer == 0) return nullptr;
++  const auto& stroke = ink::native::CastToInProgressStrokeWrapper(pointer).Stroke();
++  if (!Group(env, coat, stroke.BrushCoatCount())) return nullptr;
++  const auto outlines = stroke.GetCoatOutlines(coat);
++  const auto& mesh = stroke.GetMesh(coat);
++  return Outlines(env, outlines.size(), [&](size_t i) {
++    return Positions(env, outlines[i].size(), [&](size_t vertex) {
++      return mesh.VertexPosition(outlines[i][vertex]);
++    });
++  });
++}
++
++extern "C" JNIEXPORT jobjectArray JNICALL
++Java_com_vivenotes_byteink_core_InkGeometryNative_finishedTriangles(
++    JNIEnv* env, jobject, jobject owner, jint group) {
++  jlong pointer = Pointer(env, owner, "getNativePointer");
++  if (pointer == 0) return nullptr;
++  const auto& shape = ink::native::CastToPartitionedMesh(pointer);
++  if (!Group(env, group, shape.RenderGroupCount())) return nullptr;
++  const auto meshes = shape.RenderGroupMeshes(group);
++  return Triangles(env, meshes.size(), [&](size_t i, jclass type, jmethodID constructor) {
++    const auto& mesh = meshes[i];
++    auto positions = Positions(env, mesh.VertexCount(), [&](size_t v) { return mesh.VertexPosition(v); });
++    if (positions == nullptr) return static_cast<jobject>(nullptr);
++    auto indices = Indices(env, size_t{mesh.TriangleCount()} * 3, [&](size_t v) {
++      return mesh.TriangleIndices(v / 3)[v % 3];
++    });
++    return Mesh(env, type, constructor, positions, indices);
++  });
++}
++
++extern "C" JNIEXPORT jobjectArray JNICALL
++Java_com_vivenotes_byteink_core_InkGeometryNative_liveTriangles(
++    JNIEnv* env, jobject, jobject owner, jint coat) {
++  jlong pointer = Pointer(env, owner, "getNativePointer$ink_strokes");
++  if (pointer == 0) return nullptr;
++  const auto& wrapper = ink::native::CastToInProgressStrokeWrapper(pointer);
++  const auto& stroke = wrapper.Stroke();
++  if (!Group(env, coat, stroke.BrushCoatCount())) return nullptr;
++  const auto& mesh = stroke.GetMesh(coat);
++  return Triangles(env, wrapper.MeshPartitionCount(coat), [&](size_t i, jclass type, jmethodID constructor) {
++    const auto vertices = wrapper.GetRawVertexData(coat, i);
++    // Live partitions can overlap. Their local indices address the corresponding
++    // slice of the coat's vertex data, rather than vertex zero of the entire coat.
++    const size_t offset = vertices.empty() ? 0 :
++        (vertices.data() - mesh.RawVertexData().data()) / mesh.VertexStride();
++    auto positions = Positions(env, wrapper.VertexCount(coat, i), [&](size_t v) {
++      return mesh.VertexPosition(offset + v);
++    });
++    if (positions == nullptr) return static_cast<jobject>(nullptr);
++    const auto raw = wrapper.GetRawTriangleIndexData(coat, i);
++    auto indices = Indices(env, raw.size() / sizeof(uint16_t), [&](size_t v) {
++      uint16_t value;
++      std::memcpy(&value, raw.data() + v * sizeof(value), sizeof(value));
++      return value;
++    });
++    return Mesh(env, type, constructor, positions, indices);
++  });
++}

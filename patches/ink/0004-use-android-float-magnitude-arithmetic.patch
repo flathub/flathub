@@ -1,0 +1,178 @@
+diff --git a/ink/geometry/internal/BUILD.bazel b/ink/geometry/internal/BUILD.bazel
+--- a/ink/geometry/internal/BUILD.bazel
++++ b/ink/geometry/internal/BUILD.bazel
+@@ -202,6 +202,7 @@
+     hdrs = ["polyline_processing.h"],
+     deps = [
+         ":algorithms",
++        ":android_math",
+         ":static_rtree",
+         "//ink/geometry:distance",
+         "//ink/geometry:envelope",
+diff --git a/ink/geometry/internal/android_math.h b/ink/geometry/internal/android_math.h
+--- a/ink/geometry/internal/android_math.h
++++ b/ink/geometry/internal/android_math.h
+@@ -191,6 +191,82 @@
+ 	}
+ }
+ 
++/* e_hypotf.c -- float version of e_hypot.c.
++ * Conversion to float by Ian Lance Taylor, Cygnus Support, ian@cygnus.com.
++ *
++ * ====================================================
++ * Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
++ *
++ * Developed at SunPro, a Sun Microsystems, Inc. business.
++ * Permission to use, copy, modify, and distribute this
++ * software is freely granted, provided that this notice
++ * is preserved.
++ * ====================================================
++ */
++
++// Same pinned Bionic source as the angle functions. Keep the original float
++// intermediates: correctly-rounded platform hypot differs by one ulp for some
++// arguments, and that can change the extruder's intersection topology.
++// Adaptations: bit_cast, std:: math helpers, and float quiet-NaN arithmetic in
++// place of Bionic's long-double expression. Finite arithmetic is unchanged.
++__attribute__((visibility("hidden"))) inline float
++AndroidHypot(float x, float y)
++{
++#pragma clang fp contract(off)
++    float a,b,t1,t2,y1,y2,w;
++    int32_t j,k,ha,hb;
++    ha = std::bit_cast<int32_t>(x) & 0x7fffffff;
++    hb = std::bit_cast<int32_t>(y) & 0x7fffffff;
++    if (hb > ha) { a=y; b=x; j=ha; ha=hb; hb=j; }
++    else { a=x; b=y; }
++    a = std::fabs(a);
++    b = std::fabs(b);
++    if ((ha-hb)>0xf000000) return a+b;
++    k=0;
++    if (ha > 0x58800000) {
++        if (ha >= 0x7f800000) {
++            w = std::fabs(x+0.0f)-std::fabs(y+0.0f);
++            if (ha == 0x7f800000) w = a;
++            if (hb == 0x7f800000) w = b;
++            return w;
++        }
++        ha -= 0x22000000; hb -= 0x22000000; k += 68;
++        a = std::bit_cast<float>(ha);
++        b = std::bit_cast<float>(hb);
++    }
++    if (hb < 0x26800000) {
++        if (hb <= 0x007fffff) {
++            if (hb==0) return a;
++            t1 = std::bit_cast<float>(int32_t{0x7e800000});
++            b *= t1;
++            a *= t1;
++            k -= 126;
++        } else {
++            ha += 0x22000000; hb += 0x22000000; k -= 68;
++            a = std::bit_cast<float>(ha);
++            b = std::bit_cast<float>(hb);
++        }
++    }
++    w = a-b;
++    if (w>b) {
++        t1 = std::bit_cast<float>(ha&0xfffff000);
++        t2 = a-t1;
++        w = std::sqrt(t1*t1-(b*(-b)-t2*(a+t1)));
++    } else {
++        a = a+a;
++        y1 = std::bit_cast<float>(hb&0xfffff000);
++        y2 = b-y1;
++        t1 = std::bit_cast<float>((ha+0x00800000)&0xfffff000);
++        t2 = a-t1;
++        w = std::sqrt(t1*y1-(w*(-w)-(t1*y2+t2*b)));
++    }
++    if (k!=0) {
++        t1 = std::bit_cast<float>((127+k)<<23);
++        return t1*w;
++    }
++    return w;
++}
++
+ }
+ 
+ #endif
+diff --git a/ink/geometry/internal/android_math_test.cc b/ink/geometry/internal/android_math_test.cc
+--- a/ink/geometry/internal/android_math_test.cc
++++ b/ink/geometry/internal/android_math_test.cc
+@@ -27,4 +27,33 @@
+   EXPECT_EQ(std::bit_cast<uint32_t>(AndroidAtan2(-inf, -inf)), 0xc016cbe4u);
+   EXPECT_TRUE(std::isnan(AndroidAtan2(inf, std::numeric_limits<float>::quiet_NaN())));
+ }
++TEST(AndroidMathTest, MagnitudeBitsMatchAndroid) {
++  // Bionic results measured from the pinned NDK 28.2 libm object. Several are
++  // one ulp away from the host's correctly-rounded hypotf result.
++  EXPECT_EQ(std::bit_cast<uint32_t>(AndroidHypot(0.1f, 0.3f)), 0x3ea1e89cu);
++  EXPECT_EQ(std::bit_cast<uint32_t>(AndroidHypot(0.1f, 0.6f)), 0x3f1bb7ffu);
++  EXPECT_EQ(std::bit_cast<uint32_t>(AndroidHypot(0.1f, 1.1f)), 0x3f8d6170u);
++  EXPECT_EQ(std::bit_cast<uint32_t>(AndroidHypot(0.1f, 2.8f)), 0x40335073u);
++  EXPECT_EQ(std::bit_cast<uint32_t>(AndroidHypot(0.1f, 2.9f)), 0x4039b5d8u);
++  EXPECT_EQ(std::bit_cast<uint32_t>(AndroidHypot(0.1f, 3.1f)), 0x404680d2u);
++  EXPECT_EQ(std::bit_cast<uint32_t>(AndroidHypot(0.1f, 3.9f)), 0x4079ae9bu);
++  EXPECT_EQ(std::bit_cast<uint32_t>(AndroidHypot(0.2f, 0.9f)), 0x3f6c0535u);
++  EXPECT_EQ(std::bit_cast<uint32_t>(AndroidHypot(-0.3f, 0.1f)), 0x3ea1e89cu);
++  EXPECT_EQ(std::bit_cast<uint32_t>(AndroidHypot(0.3f, -0.1f)), 0x3ea1e89cu);
++  EXPECT_EQ(std::bit_cast<uint32_t>(AndroidHypot(3.f, 4.f)), 0x40a00000u);
++  EXPECT_EQ(std::bit_cast<uint32_t>(AndroidHypot(1e-20f, 1e-20f)), 0x1e859196u);
++  EXPECT_EQ(std::bit_cast<uint32_t>(AndroidHypot(1e20f, 1e20f)), 0x60f553b3u);
+ }
++TEST(AndroidMathTest, MagnitudeSignedZerosAndExceptionalInputs) {
++  EXPECT_EQ(std::bit_cast<uint32_t>(AndroidHypot(-0.f, 0.f)), 0u);
++  float denorm = std::numeric_limits<float>::denorm_min();
++  EXPECT_EQ(std::bit_cast<uint32_t>(AndroidHypot(denorm, denorm)), 1u);
++  const float inf = std::numeric_limits<float>::infinity();
++  const float nan = std::numeric_limits<float>::quiet_NaN();
++  EXPECT_EQ(AndroidHypot(inf, nan), inf);
++  EXPECT_EQ(AndroidHypot(nan, inf), inf);
++  EXPECT_TRUE(std::isnan(AndroidHypot(nan, 1.f)));
++  EXPECT_TRUE(std::isinf(AndroidHypot(std::numeric_limits<float>::max(),
++                                   std::numeric_limits<float>::max())));
++}
++}
+diff --git a/ink/geometry/internal/polyline_processing.cc b/ink/geometry/internal/polyline_processing.cc
+--- a/ink/geometry/internal/polyline_processing.cc
++++ b/ink/geometry/internal/polyline_processing.cc
+@@ -27,6 +27,7 @@
+ #include "ink/geometry/distance.h"
+ #include "ink/geometry/envelope.h"
+ #include "ink/geometry/internal/algorithms.h"
++#include "ink/geometry/internal/android_math.h"
+ #include "ink/geometry/internal/static_rtree.h"
+ #include "ink/geometry/point.h"
+ #include "ink/geometry/rect.h"
+@@ -481,7 +482,7 @@
+   Envelope envelope;
+   envelope.Add(points);
+   polyline.max_straight_line_distance =
+-      std::hypot(envelope.AsRect()->Width(), envelope.AsRect()->Height());
++      AndroidHypot(envelope.AsRect()->Width(), envelope.AsRect()->Height());
+ 
+   polyline.min_walk_distance =
+       polyline.total_walk_distance * kTotalWalkDistanceToMinWalkDistanceRatio;
+diff --git a/ink/geometry/vec.h b/ink/geometry/vec.h
+--- a/ink/geometry/vec.h
++++ b/ink/geometry/vec.h
+@@ -43,7 +43,7 @@
+   }
+ 
+   // Returns the length of the vector.
+-  float Magnitude() const { return std::hypot(x, y); }
++  float Magnitude() const { return geometry_internal::AndroidHypot(x, y); }
+ 
+   // Returns the squared length of the vector.
+   float MagnitudeSquared() const;
+diff --git a/ink/strokes/internal/stroke_subtraction.cc b/ink/strokes/internal/stroke_subtraction.cc
+--- a/ink/strokes/internal/stroke_subtraction.cc
++++ b/ink/strokes/internal/stroke_subtraction.cc
+@@ -157,7 +157,7 @@
+   ABSL_DCHECK_GE(val.Size(), 2);
+   float dx = val[0], dy = val[1];
+   val[0] = geometry_internal::AndroidAtan2(dy, dx) / (2.0f * kPi);
+-  val[1] = std::hypot(dx, dy) - 1.0f;
++  val[1] = geometry_internal::AndroidHypot(dx, dy) - 1.0f;
+   return val;
+ }
+ // LINT.ThenChange(../../rendering/skia/common_internal/sksl_vertex_shader_helper_functions.h:apply_hsl_and_opacity_shift)

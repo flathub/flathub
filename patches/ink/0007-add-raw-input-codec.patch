@@ -1,0 +1,127 @@
+diff --git a/ink/jni/BUILD.bazel b/ink/jni/BUILD.bazel
+--- a/ink/jni/BUILD.bazel
++++ b/ink/jni/BUILD.bazel
+@@ -49,6 +49,7 @@
+         ":android_all_jni",
+         ":byteink_compression_jni",
+         ":byteink_geometry_jni",
++        ":byteink_input_codec_jni",
+     ],
+ )
+ 
+@@ -102,3 +103,16 @@
+     ],
+     alwayslink = 1,
+ )
++
++# ByteInk-owned raw protobuf bridge. Engine storage semantics stay pinned.
++cc_library(
++    name = "byteink_input_codec_jni",
++    srcs = ["byteink_input_codec_jni.cc"],
++    deps = [
++        "//ink/storage:stroke_input_batch",
++        "//ink/storage/proto:stroke_input_batch_cc_proto",
++        "//ink/strokes/internal/jni:stroke_input_batch_native_helper",
++        "@rules_jni//jni",
++    ],
++    alwayslink = 1,
++)
+diff --git a/ink/jni/byteink_input_codec_jni.cc b/ink/jni/byteink_input_codec_jni.cc
+new file mode 100644
+--- /dev/null
++++ b/ink/jni/byteink_input_codec_jni.cc
+@@ -0,0 +1,94 @@
++// Copyright 2026 ViveNotes
++// SPDX-License-Identifier: Apache-2.0
++// Raw input protobuf access; compression and bounded inflation remain on the JVM side.
++#include <jni.h>
++
++#include <climits>
++#include <cstddef>
++
++#include "ink/storage/proto/stroke_input_batch.pb.h"
++#include "ink/storage/stroke_input_batch.h"
++#include "ink/strokes/internal/jni/stroke_input_batch_native_helper.h"
++
++namespace {
++void Fail(JNIEnv* env, const char* type, const char* message) {
++  jclass error = env->FindClass(type);
++  if (error != nullptr) env->ThrowNew(error, message);
++}
++
++struct ReleaseBytes {
++  JNIEnv* env;
++  jbyteArray array;
++  jbyte* bytes;
++  jint mode;
++  ~ReleaseBytes() { env->ReleaseByteArrayElements(array, bytes, mode); }
++};
++}  // namespace
++
++extern "C" JNIEXPORT jbyteArray JNICALL
++Java_com_vivenotes_byteink_vive_InkInputCodecNative_encode(
++    JNIEnv* env, jclass, jobject owner) {
++  if (owner == nullptr) {
++    Fail(env, "java/lang/NullPointerException", "Missing Ink input owner");
++    return nullptr;
++  }
++  jclass type = env->GetObjectClass(owner);
++  if (type == nullptr) return nullptr;
++  jmethodID getter = env->GetMethodID(type, "getNativePointer", "()J");
++  env->DeleteLocalRef(type);
++  if (getter == nullptr) return nullptr;
++  const jlong pointer = env->CallLongMethod(owner, getter);
++  if (env->ExceptionCheck()) return nullptr;
++  if (pointer == 0) {
++    Fail(env, "java/lang/IllegalStateException", "Missing native Ink inputs");
++    return nullptr;
++  }
++  ink::proto::CodedStrokeInputBatch proto;
++  ink::EncodeStrokeInputBatch(ink::native::CastToStrokeInputBatch(pointer), proto);
++  const size_t size = proto.ByteSizeLong();
++  if (size > INT_MAX) {
++    Fail(env, "java/lang/IllegalArgumentException", "Ink input protobuf exceeds a JVM array");
++    return nullptr;
++  }
++  jbyteArray result = env->NewByteArray(static_cast<jsize>(size));
++  if (result == nullptr || size == 0) return result;
++  jbyte* bytes = env->GetByteArrayElements(result, nullptr);
++  if (bytes == nullptr) return nullptr;
++  ReleaseBytes release{env, result, bytes, 0};
++  if (!proto.SerializeToArray(bytes, static_cast<int>(size))) {
++    Fail(env, "java/lang/IllegalArgumentException", "Cannot serialize Ink inputs");
++    return nullptr;
++  }
++  return result;
++}
++
++extern "C" JNIEXPORT jlong JNICALL
++Java_com_vivenotes_byteink_vive_InkInputCodecNative_createFromProto(
++    JNIEnv* env, jclass, jbyteArray input, jint size) {
++  if (input == nullptr) {
++    Fail(env, "java/lang/NullPointerException", "Missing input protobuf");
++    return 0;
++  }
++  if (size < 0 || size > env->GetArrayLength(input) || size > 64 * 1024 * 1024) {
++    Fail(env, "java/lang/IllegalArgumentException", "Invalid Ink input protobuf length");
++    return 0;
++  }
++  ink::proto::CodedStrokeInputBatch proto;
++  if (size > 0) {
++    jbyte* bytes = env->GetByteArrayElements(input, nullptr);
++    if (bytes == nullptr) return 0;
++    ReleaseBytes release{env, input, bytes, JNI_ABORT};
++    if (!proto.ParseFromArray(bytes, size)) {
++      Fail(env, "java/lang/IllegalArgumentException", "Failed to parse ink.proto.CodedStrokeInputBatch.");
++      return 0;
++    }
++  }
++  auto inputs = ink::DecodeStrokeInputBatch(proto);
++  if (!inputs.ok()) {
++    Fail(env, "java/lang/IllegalArgumentException", inputs.status().ToString().c_str());
++    return 0;
++  }
++  // wrapNative invokes this allocator after constructing its finalizable NativePointer owner.
++  // The normal StrokeInputBatch destructor and NativePointerObserver apply unchanged.
++  return ink::native::NewNativeStrokeInputBatch(*inputs);
++}

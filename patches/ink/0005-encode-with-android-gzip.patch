@@ -1,0 +1,104 @@
+diff --git a/ink/jni/BUILD.bazel b/ink/jni/BUILD.bazel
+--- a/ink/jni/BUILD.bazel
++++ b/ink/jni/BUILD.bazel
+@@ -47,6 +47,7 @@
+     linkstatic = 1,
+     deps = [
+         ":android_all_jni",
++        ":byteink_compression_jni",
+     ],
+ )
+ 
+@@ -77,3 +78,11 @@
+         "//ink/storage/internal/jni",
+     ],
+ )
++
++# ByteInk-owned codec extension. The upstream Ink JNI surface remains unchanged.
++cc_library(
++    name = "byteink_compression_jni",
++    srcs = ["byteink_compression_jni.cc"],
++    deps = ["@rules_jni//jni", "@zlib//:zlib"],
++    alwayslink = 1,
++)
+diff --git a/ink/jni/byteink_compression_jni.cc b/ink/jni/byteink_compression_jni.cc
+new file mode 100644
+--- /dev/null
++++ b/ink/jni/byteink_compression_jni.cc
+@@ -0,0 +1,76 @@
++// Copyright 2026 ViveNotes
++// SPDX-License-Identifier: Apache-2.0
++//
++// Pinned classic zlib gzip for ViveNotes rows. Host JVMs can use zlib-ng, and
++// older Java ports have different block flushing; neither guarantees Android bytes.
++#include <jni.h>
++#include <zlib.h>
++
++#include <climits>
++#include <cstdlib>
++#include <memory>
++
++namespace {
++jbyteArray Fail(JNIEnv* env, const char* type, const char* message) {
++  jclass error = env->FindClass(type);
++  if (error != nullptr) env->ThrowNew(error, message);
++  return nullptr;
++}
++struct EndDeflate {
++  z_stream* stream;
++  ~EndDeflate() { deflateEnd(stream); }
++};
++struct ReleaseInput {
++  JNIEnv* env;
++  jbyteArray input;
++  jbyte* bytes;
++  ~ReleaseInput() { env->ReleaseByteArrayElements(input, bytes, JNI_ABORT); }
++};
++}  // namespace
++
++extern "C" JNIEXPORT jbyteArray JNICALL
++Java_com_vivenotes_byteink_vive_AndroidInkCompressionNative_gzip(
++    JNIEnv* env, jclass, jbyteArray input) {
++  if (input == nullptr) {
++    return Fail(env, "java/lang/NullPointerException", "Missing input protobuf");
++  }
++  const jsize length = env->GetArrayLength(input);
++  z_stream stream{};
++  // Android GZIPOutputStream uses classic level 6, window 15 and memory level 8.
++  if (deflateInit2(&stream, 6, Z_DEFLATED, 15 + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
++    return Fail(env, "java/lang/OutOfMemoryError", "Cannot initialize ink gzip");
++  }
++  EndDeflate end{&stream};
++  gz_header header{};
++  header.time = 0;
++  header.os = 255;
++  if (deflateSetHeader(&stream, &header) != Z_OK) {
++    return Fail(env, "java/io/IOException", "Cannot initialize ink gzip header");
++  }
++  const uLong bound = deflateBound(&stream, static_cast<uLong>(length));
++  if (bound > INT_MAX) {
++    return Fail(env, "java/lang/IllegalArgumentException", "Ink gzip exceeds a JVM byte array");
++  }
++  std::unique_ptr<unsigned char, decltype(&std::free)> output(
++      static_cast<unsigned char*>(std::malloc(bound)), &std::free);
++  if (!output) {
++    return Fail(env, "java/lang/OutOfMemoryError", "Cannot allocate ink gzip");
++  }
++  jbyte* bytes = env->GetByteArrayElements(input, nullptr);
++  if (bytes == nullptr) return nullptr;  // Preserve the JVM's allocation exception.
++  ReleaseInput release{env, input, bytes};
++  stream.next_in = reinterpret_cast<Bytef*>(bytes);
++  stream.avail_in = static_cast<uInt>(length);
++  stream.next_out = output.get();
++  stream.avail_out = static_cast<uInt>(bound);
++  // One finish, with no sync/partial flushes, matches the app's one-array writer.
++  if (deflate(&stream, Z_FINISH) != Z_STREAM_END) {
++    return Fail(env, "java/io/IOException", "Cannot finish ink gzip");
++  }
++  jbyteArray result = env->NewByteArray(static_cast<jsize>(stream.total_out));
++  if (result != nullptr) {
++    env->SetByteArrayRegion(result, 0, static_cast<jsize>(stream.total_out),
++                           reinterpret_cast<const jbyte*>(output.get()));
++  }
++  return result;
++}

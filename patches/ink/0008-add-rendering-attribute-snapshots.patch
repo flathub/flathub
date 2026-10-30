@@ -1,0 +1,140 @@
+diff --git a/ink/jni/byteink_geometry_jni.cc b/ink/jni/byteink_geometry_jni.cc
+--- a/ink/jni/byteink_geometry_jni.cc
++++ b/ink/jni/byteink_geometry_jni.cc
+@@ -205,3 +205,136 @@
+     return Mesh(env, type, constructor, positions, indices);
+   });
+ }
++
++
++namespace {
++// Canonical StrokeMesh components, independent of optional packed attributes.
++int AttributeIndex(ink::MeshFormat::AttributeId id) {
++  using Id = ink::MeshFormat::AttributeId;
++  switch (id) {
++    case Id::kPosition: return 0;
++    case Id::kOpacityShift: return 1;
++    case Id::kColorShiftHsl: return 2;
++    case Id::kSideDerivative: return 3;
++    case Id::kSideLabel: return 4;
++    case Id::kForwardDerivative: return 5;
++    case Id::kForwardLabel: return 6;
++    case Id::kSurfaceUv: return 7;
++    case Id::kAnimationOffset: return 8;
++    default: return -1;
++  }
++}
++constexpr int kOffsets[] = {0, 2, 3, 6, 8, 9, 11, 12, 14};
++constexpr int kComponents[] = {2, 1, 3, 2, 1, 2, 1, 2, 1};
++constexpr size_t kVertexStride = 15;
++
++template <typename NativeMesh>
++jobject RenderingMesh(JNIEnv* env, const NativeMesh& mesh, size_t offset,
++                      size_t count, jfloatArray vertices, jintArray indices,
++                      jclass type, jmethodID constructor) {
++  if (vertices == nullptr || indices == nullptr) return nullptr;
++  jint mask = 0;
++  const auto attributes = mesh.Format().Attributes();
++  for (const auto& attribute : attributes) {
++    const int index = AttributeIndex(attribute.id);
++    if (index >= 0) {
++      if (ink::MeshFormat::ComponentCount(attribute.type) != kComponents[index]) {
++        Fail(env, "java/lang/IllegalArgumentException",
++             "Ink rendering attribute has an incompatible component count");
++        return nullptr;
++      }
++      mask |= 1 << index;
++    }
++  }
++  if (count != 0) {
++    jfloat* values = env->GetFloatArrayElements(vertices, nullptr);
++    if (values == nullptr) return nullptr;
++    std::memset(values, 0, count * kVertexStride * sizeof(jfloat));
++    for (size_t a = 0; a < attributes.size(); ++a) {
++      const int index = AttributeIndex(attributes[a].id);
++      if (index < 0) continue;
++      for (size_t v = 0; v < count; ++v) {
++        const auto decoded = mesh.FloatVertexAttribute(offset + v, a);
++        for (int c = 0; c < kComponents[index]; ++c) {
++          values[v * kVertexStride + kOffsets[index] + c] = decoded[c];
++        }
++      }
++    }
++    env->ReleaseFloatArrayElements(vertices, values, 0);
++  }
++  jobject result = env->NewObject(type, constructor, vertices, indices, mask);
++  env->DeleteLocalRef(vertices);
++  env->DeleteLocalRef(indices);
++  return result;
++}
++
++template <typename Copy>
++jobjectArray RenderingMeshes(JNIEnv* env, size_t count, Copy copy) {
++  if (!Fits(env, count)) return nullptr;
++  jclass type = env->FindClass("com/vivenotes/byteink/core/StrokeMesh");
++  if (type == nullptr) return nullptr;
++  jmethodID constructor = env->GetMethodID(type, "<init>", "([F[II)V");
++  if (constructor == nullptr) { env->DeleteLocalRef(type); return nullptr; }
++  jobjectArray result = env->NewObjectArray(static_cast<jsize>(count), type, nullptr);
++  if (result == nullptr) { env->DeleteLocalRef(type); return nullptr; }
++  for (size_t i = 0; i < count; ++i) {
++    jobject value = copy(i, type, constructor);
++    if (value == nullptr || env->ExceptionCheck()) {
++      env->DeleteLocalRef(type);
++      return nullptr;
++    }
++    env->SetObjectArrayElement(result, static_cast<jsize>(i), value);
++    env->DeleteLocalRef(value);
++    if (env->ExceptionCheck()) { env->DeleteLocalRef(type); return nullptr; }
++  }
++  env->DeleteLocalRef(type);
++  return result;
++}
++}  // namespace
++
++extern "C" JNIEXPORT jobjectArray JNICALL
++Java_com_vivenotes_byteink_core_InkGeometryNative_finishedRendering(
++    JNIEnv* env, jobject, jobject owner, jint group) {
++  jlong pointer = Pointer(env, owner, "getNativePointer");
++  if (pointer == 0) return nullptr;
++  const auto& shape = ink::native::CastToPartitionedMesh(pointer);
++  if (!Group(env, group, shape.RenderGroupCount())) return nullptr;
++  const auto meshes = shape.RenderGroupMeshes(group);
++  return RenderingMeshes(env, meshes.size(), [&](size_t i, jclass type, jmethodID ctor) {
++    const auto& mesh = meshes[i];
++    if (!Fits(env, mesh.VertexCount(), kVertexStride)) return static_cast<jobject>(nullptr);
++    auto vertices = env->NewFloatArray(static_cast<jsize>(mesh.VertexCount() * kVertexStride));
++    if (vertices == nullptr) return static_cast<jobject>(nullptr);
++    auto indices = Indices(env, size_t{mesh.TriangleCount()} * 3, [&](size_t v) {
++      return mesh.TriangleIndices(v / 3)[v % 3];
++    });
++    return RenderingMesh(env, mesh, 0, mesh.VertexCount(), vertices, indices, type, ctor);
++  });
++}
++
++extern "C" JNIEXPORT jobjectArray JNICALL
++Java_com_vivenotes_byteink_core_InkGeometryNative_liveRendering(
++    JNIEnv* env, jobject, jobject owner, jint coat) {
++  jlong pointer = Pointer(env, owner, "getNativePointer$ink_strokes");
++  if (pointer == 0) return nullptr;
++  const auto& wrapper = ink::native::CastToInProgressStrokeWrapper(pointer);
++  const auto& stroke = wrapper.Stroke();
++  if (!Group(env, coat, stroke.BrushCoatCount())) return nullptr;
++  const auto& mesh = stroke.GetMesh(coat);
++  return RenderingMeshes(env, wrapper.MeshPartitionCount(coat), [&](size_t i, jclass type, jmethodID ctor) {
++    const auto raw_vertices = wrapper.GetRawVertexData(coat, i);
++    const size_t offset = raw_vertices.empty() ? 0 :
++        (raw_vertices.data() - mesh.RawVertexData().data()) / mesh.VertexStride();
++    const size_t count = wrapper.VertexCount(coat, i);
++    if (!Fits(env, count, kVertexStride)) return static_cast<jobject>(nullptr);
++    auto vertices = env->NewFloatArray(static_cast<jsize>(count * kVertexStride));
++    if (vertices == nullptr) return static_cast<jobject>(nullptr);
++    const auto raw = wrapper.GetRawTriangleIndexData(coat, i);
++    auto indices = Indices(env, raw.size() / sizeof(uint16_t), [&](size_t v) {
++      uint16_t value;
++      std::memcpy(&value, raw.data() + v * sizeof(value), sizeof(value));
++      return value;
++    });
++    return RenderingMesh(env, mesh, offset, count, vertices, indices, type, ctor);
++  });
++}
