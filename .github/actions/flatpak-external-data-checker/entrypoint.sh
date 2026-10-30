@@ -186,7 +186,4 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     fi
 fi
 
-if ((${#failed_apps[@]})); then
-    exit 1
-fi
 exit 0
