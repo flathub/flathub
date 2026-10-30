@@ -1,0 +1,116 @@
+app-id: com.github.patopatetico2.ducksdrive
+runtime: org.kde.Platform
+runtime-version: '6.8'
+sdk: org.kde.Sdk
+command: ducksdrive
+
+finish-args:
+  # Rede e comunicação IPC
+  - --share=network
+  - --share=ipc
+  # Servidor gráfico X11 / Wayland
+  - --socket=x11
+  - --socket=fallback-x11
+  - --socket=wayland
+  # Acesso ao FUSE e ao sistema de ficheiros do anfitrião (~/CloudDrives, configs e favoritos)
+  - --device=all
+  - --filesystem=host
+  # Ponte D-Bus para executar o fusermount3 (setuid root do host) e ícones da bandeja
+  - --talk-name=org.freedesktop.Flatpak
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  # 1. Motor Rclone oficial (binário estático v1.73.5)
+  - name: rclone
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 rclone /app/bin/rclone
+    sources:
+      - type: archive
+        url: https://downloads.rclone.org/v1.73.5/rclone-v1.73.5-linux-amd64.zip
+        sha256: 932cf4b7484de74d82b4875488e0009469fd21f9904673385184520fe11a1bf0
+        only-arches:
+          - x86_64
+
+  # 2. Ponte FUSE3 para a sandbox Flatpak (redireciona _FUSE_COMMFD ao fusermount3 setuid do host)
+  - name: fuse3-host-bridge
+    buildsystem: simple
+    build-commands:
+      - |
+        install -dm755 /app/bin
+        cat << 'EOF' > /app/bin/fusermount3
+        #!/bin/sh
+        if [ -n "${_FUSE_COMMFD:-}" ]; then
+            exec flatpak-spawn --host --forward-fd="${_FUSE_COMMFD}" --env=_FUSE_COMMFD="${_FUSE_COMMFD}" fusermount3 "$@"
+        else
+            exec flatpak-spawn --host fusermount3 "$@"
+        fi
+        EOF
+        chmod 755 /app/bin/fusermount3
+        ln -sf fusermount3 /app/bin/fusermount
+    sources: []
+
+  # 3. Dependência Python PySide6 (Offline wheels compatíveis com Flathub)
+  - name: pyside6
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST} --no-build-isolation shiboken6 PySide6_Essentials PySide6_Addons PySide6
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/7b/ff/ab4f287b9573e50b5a47c10e2af8feb5abecc3c7431bd5deec135efc969e/shiboken6-6.8.2.1-cp39-abi3-manylinux_2_28_x86_64.whl
+        sha256: c83e90056f13d0872cc4d2b7bf60b6d6e3b1b172f1f91910c0ba5b641af01758
+        only-arches:
+          - x86_64
+      - type: file
+        url: https://files.pythonhosted.org/packages/d2/f9/aa4ff511ff1f3dd177f7e8f5a635e03fe578fa2045c8d6be4577e7db3b28/PySide6_Essentials-6.8.2.1-cp39-abi3-manylinux_2_28_x86_64.whl
+        sha256: 5ab31e5395a4724102edd6e8ff980fa3f7cde2aa79050763a1dcc30bb914195a
+        only-arches:
+          - x86_64
+      - type: file
+        url: https://files.pythonhosted.org/packages/95/3a/93e0028805c50ceff8b8ae0f274d502805b8a864129b83d705ab12d48f78/PySide6_Addons-6.8.2.1-cp39-abi3-manylinux_2_28_x86_64.whl
+        sha256: f3d85e676851ada8238bc76ebfacbee738fc0b35b3bc15c9765dd107b8ee6ec4
+        only-arches:
+          - x86_64
+      - type: file
+        url: https://files.pythonhosted.org/packages/fa/00/0b232a25eeb8671202d7a7ec92893bd25b965debfd1d5d7aad637b067efe/PySide6-6.8.2.1-cp39-abi3-manylinux_2_28_x86_64.whl
+        sha256: 23d2a1a77b25459a049c4276b4e0bbfb375b73d3921061b1a16bcfa64e1fe517
+        only-arches:
+          - x86_64
+
+  # 4. Aplicação principal DucksDrive + Metadados Desktop/AppStream
+  - name: ducksdrive
+    buildsystem: simple
+    build-commands:
+      - install -dm755 /app/share/ducksdrive
+      - install -Dm644 main.py gui_tray.py status_popup.py settings_dialog.py rclone_daemon.py rclone_stats.py rclone_config.py rclone_settings.py filemanager_integration.py i18n.py -t /app/share/ducksdrive/
+      - install -Dm644 icon.svg /app/share/ducksdrive/icon.svg
+      - install -Dm644 icon.svg /app/share/icons/hicolor/scalable/apps/com.github.patopatetico2.ducksdrive.svg
+      - install -Dm644 com.github.patopatetico2.ducksdrive.metainfo.xml /app/share/metainfo/com.github.patopatetico2.ducksdrive.metainfo.xml
+      - |
+        install -dm755 /app/bin
+        cat << 'EOF' > /app/bin/ducksdrive
+        #!/bin/sh
+        exec python3 /app/share/ducksdrive/main.py "$@"
+        EOF
+        chmod 755 /app/bin/ducksdrive
+      - |
+        install -dm755 /app/share/applications
+        cat << 'EOF' > /app/share/applications/com.github.patopatetico2.ducksdrive.desktop
+        [Desktop Entry]
+        Name=DucksDrive
+        Comment=Manage cloud drives with Rclone
+        Comment[pt]=Gerencie nuvens e unidades remotas com Rclone
+        Comment[pt_BR]=Gerencie nuvens e unidades remotas com Rclone
+        Exec=ducksdrive
+        Icon=com.github.patopatetico2.ducksdrive
+        Terminal=false
+        Type=Application
+        Categories=Network;Utility;FileTools;
+        StartupNotify=true
+        StartupWMClass=ducksdrive
+        EOF
+    sources:
+      - type: archive
+        url: https://github.com/Patopatetico2-lab/ducksdrive/archive/refs/tags/v1.0.8.tar.gz
+        sha256: 7cd6a71ee605463eedc48dc7fe7306cd2f267a49a1373262c9170a3ff4f1385c
