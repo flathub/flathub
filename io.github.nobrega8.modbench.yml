@@ -1,0 +1,74 @@
+# Modbench repackages the .deb of each upstream release (the same binaries as
+# its APT repository); x-checker-data opens the update for each new release
+# and adds it to the metainfo. Upstream copy: flatpak/ in
+# https://github.com/nobrega8/modbench
+id: io.github.nobrega8.modbench
+runtime: org.gnome.Platform
+runtime-version: "51"
+sdk: org.gnome.Sdk
+command: modbench
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # Serial adapters (/dev/ttyUSB*, /dev/ttyACM*) for Modbus RTU and ASCII,
+  # and the GPU
+  - --device=all
+  # Modbus TCP and UDP, the online map library and the update check
+  - --share=network
+  # Maps, simulator setups and CSV exports are opened and saved anywhere the
+  # user keeps them; the file dialogs are GTK's own, not the portal's
+  - --filesystem=home
+
+modules:
+  - name: modbench
+    buildsystem: simple
+    sources:
+      - type: file
+        dest-filename: modbench.deb
+        only-arches: [x86_64]
+        url: https://github.com/nobrega8/modbench/releases/download/v0.4.4/Modbench_0.4.4_amd64.deb
+        sha256: 49aa825392c202159a32012b428bda05cc208df77e87618cec2e08f70a508637
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/nobrega8/modbench/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: .assets[] | select(.name == "Modbench_" + $version + "_amd64.deb") | .browser_download_url
+          is-main-source: true
+      - type: file
+        dest-filename: modbench.deb
+        only-arches: [aarch64]
+        url: https://github.com/nobrega8/modbench/releases/download/v0.4.4/Modbench_0.4.4_arm64.deb
+        sha256: d474f96a5e771abef01641ac2bc652c1046724b21bf1153085dc487d6b0e45e5
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/nobrega8/modbench/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: .assets[] | select(.name == "Modbench_" + $version + "_arm64.deb") | .browser_download_url
+      - type: file
+        path: io.github.nobrega8.modbench.metainfo.xml
+    build-commands:
+      - ar x modbench.deb
+      - tar xf data.tar.gz
+      - install -Dm755 usr/bin/modbench usr/bin/modbench-cli -t /app/bin
+      # Exported files must be named after the app id
+      - install -Dm644 usr/share/applications/Modbench.desktop /app/share/applications/io.github.nobrega8.modbench.desktop
+      - desktop-file-edit --set-icon=io.github.nobrega8.modbench /app/share/applications/io.github.nobrega8.modbench.desktop
+      - install -Dm644 usr/share/icons/hicolor/32x32/apps/modbench.png /app/share/icons/hicolor/32x32/apps/io.github.nobrega8.modbench.png
+      - install -Dm644 usr/share/icons/hicolor/128x128/apps/modbench.png /app/share/icons/hicolor/128x128/apps/io.github.nobrega8.modbench.png
+      # Tauri names the 256 px icon 256x256@2
+      - install -Dm644 usr/share/icons/hicolor/256x256@2/apps/modbench.png /app/share/icons/hicolor/256x256/apps/io.github.nobrega8.modbench.png
+      # File types, with their icons renamed after the app id too
+      - |
+        for size in 32 64 128 256; do
+          for type in text-x-mbmap application-x-mbsim; do
+            install -Dm644 usr/share/icons/hicolor/${size}x${size}/mimetypes/$type.png \
+              /app/share/icons/hicolor/${size}x${size}/mimetypes/io.github.nobrega8.modbench.$type.png
+          done
+        done
+      - |
+        sed -e 's|<mime-type type="text/x-mbmap">|&\n    <icon name="io.github.nobrega8.modbench.text-x-mbmap"/>|' \
+            -e 's|<mime-type type="application/x-mbsim">|&\n    <icon name="io.github.nobrega8.modbench.application-x-mbsim"/>|' \
+            usr/share/mime/packages/modbench.xml > io.github.nobrega8.modbench.xml
+        install -Dm644 io.github.nobrega8.modbench.xml -t /app/share/mime/packages
+      - install -Dm644 io.github.nobrega8.modbench.metainfo.xml -t /app/share/metainfo
