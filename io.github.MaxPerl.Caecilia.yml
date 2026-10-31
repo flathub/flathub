@@ -1,0 +1,296 @@
+app-id: io.github.MaxPerl.Caecilia
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: caecilia.pl
+modules:
+  - name: luajit
+    no-autogen: true
+    make-args:
+      - BUILDMODE=dynamic
+      - PREFIX=${FLATPAK_DEST} 
+    make-install-args:
+      - PREFIX=${FLATPAK_DEST}
+    sources:
+      - type: git
+        url: https://github.com/LuaJIT/LuaJIT.git
+        commit: ea9eb7edb5eac4a9d175d74523db34fac0fa5180
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /share/man
+  - name: mtdev
+    buildsystem: autotools
+    sources:
+      - type: git
+        url: https://github.com/rydberg/mtdev.git
+        tag: v1.1.5
+        commit: 4381b78fea54de0e775bf54952b2f95e5a06c57d
+  - name: libevdev
+    buildsystem: meson
+    config-opts:
+      - -Dtests=disabled
+      - -Ddocumentation=disabled
+    sources:
+      - type: git
+        url: https://gitlab.freedesktop.org/libevdev/libevdev.git
+        tag: libevdev-1.14.0
+        commit: d9af2e4580297e9c14715fef06621dd39d9d8a3a 
+  - name: libinput
+    buildsystem: meson
+    config-opts:
+      - "-Dlibwacom=false"
+      - "-Dtests=false"
+    sources:
+      - type: archive
+        url: https://gitlab.freedesktop.org/libinput/libinput/-/archive/1.23.0/libinput-1.23.0.tar.gz
+        sha256: 7a7c90fbc59f1f65c781a51fa634e4f79e460bf6e16ad68afbe7965d25d09738
+  - name: poppler
+    buildsystem: cmake
+    config-opts:
+      - "-DENABLE_BOOST=OFF"
+    sources:
+      - type: archive
+        url: https://poppler.freedesktop.org/poppler-23.08.0.tar.xz
+        sha256: 4a4bf7fc903b9f1a2ab7d04b7c5d8220db9bc6261cc73fdb9a826dc272f49aa8
+  - name: gs
+    buildsystem: simple
+    build-commands:
+      - ./configure --prefix=${FLATPAK_DEST} --without-tesseract --without-x
+      - make soinstall
+    build-options:
+      cflags: -std=gnu17 -Wno-error=incompatible-pointer-types -Wno-error=implicit-function-declaration -Wno-error=int-conversion
+    sources:
+      - type: archive
+        url: https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10012/ghostscript-10.01.2.tar.gz
+        sha256: a4cd61a07fec161bee35da0211a5e5cde8ff8a0aaf942fc0176715e499d21661
+  - name: libspectre
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: http://libspectre.freedesktop.org/releases/libspectre-0.2.12.tar.gz
+        sha256: 55a7517cd3572bd2565df0cf450944a04d5273b279ebb369a895391957f0f960
+  - name: efl
+    buildsystem: meson
+    config-opts:
+      - "-Dlua-interpreter=luajit"
+      - "-Dbindings="
+      - "-Dc_std=gnu17"
+      - "-Decore-imf-loaders-disabler=['ibus','scim']"
+      - "-Devas-loaders-disabler=['json', 'avif', 'heif','raw']"
+      - "-Dbuild-tests=false"
+    sources:
+      - type: archive
+        url: http://download.enlightenment.org/rel/libs/efl/efl-1.29.0.tar.xz
+        sha256: 248bc76141f2b8b006ccba9e0bb2cb46cbcb1be4181a1cf2728187f778853654
+      # Patch:
+      # Install the Ethumb D-Bus service to /app/share instead of /usr/share
+      - type: shell
+        commands:
+          - perl -pi -e "s|dep\.get_variable\(pkgconfig\s*:\s*'session_bus_services_dir'\)|join_paths\(dir_prefix, 'share/dbus-1/services'\)|" dbus-services/meson.build
+  # Installs Perl.
+  # (Based on: https://github.com/flathub/io.github.Hexchat.Plugin.Perl)
+  - name: perl
+    no-autogen: true
+    config-opts:
+      - '-des'
+      # Build a shared library.
+      - '-Duseshrplib'
+      - '-Dusethreads'
+    build-options:
+      cflags: '-fPIC'
+      ldflags: '-fpic'
+    sources:
+      - type: archive
+        url: https://www.cpan.org/src/5.0/perl-5.38.2.tar.gz
+        sha256: a0a31534451eb7b83c7d6594a497543a54d488bc90ca00f5e34762577f40655e
+      - type: script
+        dest-filename: 'configure'
+        commands:
+          - 'exec ./configure.gnu $@'
+    # Restore write permission to the Perl libraries.
+    post-install:
+      - 'chmod -R u+w /app/lib/perl5'
+    # Clean up a bunch of stuff we don't need. Depending on your application,
+    # you may have to drop some of these (e.g. *.pod).
+    cleanup:
+      - '/bin/corelist'
+      - '/bin/cpan'
+      - '/bin/enc2xs'
+      - '/bin/encguess'
+      - '/bin/h2ph'
+      - '/bin/h2xs'
+      - '/bin/instmodsh'
+      - '/bin/json_pp'
+      - '/bin/libnetcfg'
+      - '/bin/perlbug'
+      - '/bin/perldoc'
+      - '/bin/perlivp'
+      - '/bin/perlthanks'
+      - '/bin/piconv'
+      - '/bin/pl2pm'
+      - '/bin/pod*'
+      - '/bin/prove'
+      - '/bin/ptar*'
+      - '/bin/shasum'
+      - '/bin/splain'
+      - '/bin/xsubpp'
+      - '/bin/zipdetails'
+      - '/man'
+      - '*.pod'
+  - name: alsa-utils
+    config-opts:
+       - --disable-alsaconf
+       - --disable-alsamixer
+       - --disable-bat
+       - --disable-xmlto
+       - --with-curses=no
+       - --with-alsadatadir=/app/share/alsa
+       - --with-udev-rules-dir=/app/lib/udev/rules.d
+       - --with-systemdsystemunitdir=/app/lib/systemd/system
+    sources:
+       - type: archive
+         url: https://www.alsa-project.org/files/pub/utils/alsa-utils-1.2.7.tar.bz2
+         sha256: e906bf2404ff04c448eaa3d226d283a62b9a283f12e4fd8457fb24bac274e678
+  - name: midish
+    sources:
+       - type: archive
+         url: https://midish.org/midish-1.5.0.tar.gz
+         sha256: 5fbf496b39b63a2ba88d315734eff5c6d77acce5ab064fe190de3d18474b85eb
+  - name: abcm2ps
+    sources:
+       - type: archive
+         url: https://chiselapp.com/user/moinejf/repository/abcm2ps/tarball/53e682e667/abcm2ps-53e682e667.tar.gz
+         sha256: 1e3196afdbbb4f3631f5ef877ed90303b3f6a0983d9fac7d97381fbf9a4dd34b
+  - name: abcmidi
+    buildsystem: simple
+    build-commands:
+       - chmod +x configure
+       - ./configure --prefix=/app
+       - make
+       - make install
+    sources:
+       - type: archive
+         url: https://ifdo.ca/~seymour/runabc/abcMIDI-2026.10.04.zip
+         sha256: 9c51181f1354491e06e4a6c511091a85c1489ca5efd5421cd5065fdaeb023ba0
+  - name: boost
+    buildsystem: simple
+    build-commands:
+       - ./bootstrap.sh --prefix=/app
+       - ./b2 -j $FLATPAK_BUILDER_N_JOBS --with-regex --layout=tagged install
+    sources:
+       - type: archive
+         url: https://archives.boost.io/release/1.92.0/source/boost_1_92_0.tar.gz
+         sha256: c4a3b310ddd2472416e091067166b0713be97c63f38c212c484ada022fd296ce
+  - name: source-highlight
+    config-opts:
+       - --with-boost=/app
+    build-options:
+       cxxflags: -O2 -g -std=c++14
+    sources:
+       - type: archive
+         url: https://ftp.gnu.org/gnu/src-highlite/source-highlight-3.1.9.tar.gz
+         sha256: 3a7fd28378cb5416f8de2c9e77196ec915145d44e30ff4e0ee8beb3fe6211c91
+  - name: fluidsynth
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: archive
+        url: https://github.com/FluidSynth/fluidsynth/archive/refs/tags/v2.4.4.tar.gz
+        sha256: fc492a255f453e65ac5b99a25e6ffbe0fbd64d6a4fe824bacd68de16fe8af7ba
+  - name: gst-plugin-fluidsynth
+    buildsystem: meson
+    config-opts:
+      - -Dauto_features=disabled
+      - -Dfluidsynth=enabled
+      - -Dtests=disabled
+      - -Dexamples=disabled
+    sources:
+      - type: archive
+        url: https://gstreamer.freedesktop.org/src/gst-plugins-bad/gst-plugins-bad-1.26.11.tar.xz
+        sha256: 110fb82795f0e569b1e27b12ab9699d35c7762e1ff4db95335d6ac8d1442af3d
+  - name: soundfont
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 MuseScore_General.sf3 /app/share/sounds/sf3/MuseScore_General
+      - mkdir -p /app/share/soundfonts
+    sources:
+      - type: file
+        url: https://ftp.osuosl.org/pub/musescore/soundfont/MuseScore_General/MuseScore_General.sf3
+        sha256: 5b85b6c2c61d10b2b91cddd41efcce7b25cd31c8271d511c73afafbef20b6fa3  
+  - name: caecilia-data
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 io.github.MaxPerl.Caecilia.mime.xml ${FLATPAK_DEST}/share/mime/packages/io.github.MaxPerl.Caecilia.xml
+      - update-mime-database ${FLATPAK_DEST}/share/mime
+      - install -Dm644 io.github.MaxPerl.Caecilia.desktop ${FLATPAK_DEST}/share/applications/io.github.MaxPerl.Caecilia.desktop
+      - install -Dm644 io.github.MaxPerl.Caecilia.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.MaxPerl.Caecilia.metainfo.xml
+      - install -Dm644 caecilia-icon-512.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/io.github.MaxPerl.Caecilia.png
+      - install -Dm644 caecilia-icon-128.png ${FLATPAK_DEST}/share/icons/hicolor/128x128/apps/io.github.MaxPerl.Caecilia.png
+      - install -Dm644 caecilia-icon-64.png ${FLATPAK_DEST}/share/icons/hicolor/64x64/apps/io.github.MaxPerl.Caecilia.png
+    sources:
+      - type: file
+        path: io.github.MaxPerl.Caecilia.mime.xml
+      - type: file
+        path: io.github.MaxPerl.Caecilia.desktop
+      - type: file
+        path: io.github.MaxPerl.Caecilia.metainfo.xml
+      - type: file
+        path: caecilia-icon-512.png
+      - type: file
+        path: caecilia-icon-128.png
+      - type: file
+        path: caecilia-icon-64.png
+  #- name: perl-file-which
+  #  buildsystem: simple
+  #  build-commands:
+  #    - perl ./Makefile.PL PREFIX=/app
+  #    - make
+  #    - make install PREFIX=/app
+  #  sources:
+  #    - type: archive
+  #      sha256: 3201f1a60e3f16484082e6045c896842261fc345de9fb2e620fd2a2c7af3a93a
+  #      url: https://cpan.metacpan.org/authors/id/P/PL/PLICEASE/File-Which-1.27.tar.gz
+  # Installs the modules generated by flatpak-cpan-generator.
+  # Note that *any* Makefile.PL-style modules MUST be installed in this one step,
+  # as once perllocal.pod is written in one module, it cannot be modified by others.
+  - name: perl-libs
+    buildsystem: simple
+    build-commands:
+      - 'perl-libs/install.sh'
+    sources:
+      - generated-sources.json
+    post-install:
+      - 'find /app/lib/perl5 -type f ! -perm -u+w -exec chmod u+w {} + || true'
+    # This step should be customized based on the CPAN packages you're using.
+    cleanup:
+      - '/bin'
+      - '/man'
+  - name: caecilia
+    buildsystem: simple
+    build-commands:
+      - perl ./Makefile.PL PREFIX=/app
+      - make
+      - make install PREFIX=/app
+    sources:
+      - type: git
+        url: https://github.com/MaxPerl/Caecilia.git
+        commit: 57e0015cec31380ddc2cc1ae75299dddbd15d071
+        tag: v027_90
+cleanup:
+  - '/include'
+  - '*.a' 
+  - '/share/doc'
+  - '/share/man'
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --share=network
+  - --device=all
+  - --persist=.
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-music
+  - --filesystem=xdg-download
