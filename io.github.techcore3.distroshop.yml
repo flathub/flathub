@@ -1,0 +1,90 @@
+app-id: io.github.techcore3.distroshop
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: io.github.techcore3.distroshop
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/distro-shop/cargo
+    CARGO_NET_OFFLINE: 'true'
+    LIBRARY_PATH: /app/lib
+
+finish-args:
+  - --require-version=1.16.0
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --device=input
+  - --device=kvm # for qemu
+  - --system-talk-name=org.freedesktop.UDisks2 # for flashing isos
+  - --socket=pulseaudio
+  - --env=GTK_THEME=Adwaita:dark
+
+modules:
+  - name: libslirp
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://gitlab.freedesktop.org/slirp/libslirp.git
+        tag: v4.9.5
+        commit: 390848f47391f412451b2d259d8527fabb51e5e3
+
+  - name: qemu
+    buildsystem: simple
+    build-commands:
+      - >-
+        ./configure
+        --prefix=/app
+        --target-list=x86_64-softmmu
+        --enable-kvm
+        --enable-gtk
+        --enable-slirp
+        --disable-docs
+        --disable-user
+        --disable-werror
+        --disable-download
+      - make -j$(nproc)
+      - make install
+    sources:
+      - type: archive
+        url: https://download.qemu.org/qemu-11.1.2.tar.xz
+        sha256: 731b5681e4bb18be313231579b8efd0296c5b015fa36dc533874b639ba838016
+
+  - name: xdotool # required by dioxus
+    buildsystem: simple
+    build-commands:
+      - make
+      - make install PREFIX=/app
+    cleanup:
+      - /bin
+      - /include
+      - /share/man
+    sources:
+      - type: git
+        url: https://github.com/jordansissel/xdotool.git
+        tag: v3.20211022.1
+        commit: eb489de1b4fb3fd0cd935d68ae16ecd4c653ac7d
+
+  - name: distro-shop
+    buildsystem: simple
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo build --offline --release
+      - install -Dm755 target/release/distro-shop /app/bin/distro-shop
+      - ln -s distro-shop /app/bin/io.github.techcore3.distroshop
+      - install -Dm644 io.github.techcore3.distroshop.desktop /app/share/applications/io.github.techcore3.distroshop.desktop
+      - install -Dm644 io.github.techcore3.distroshop.metainfo.xml /app/share/metainfo/io.github.techcore3.distroshop.metainfo.xml
+      - install -Dm644 assets/logo.png /app/share/icons/hicolor/256x256/apps/io.github.techcore3.distroshop.png
+      - install -Dm644 LICENSE /app/share/licenses/io.github.techcore3.distroshop/LICENSE
+    sources:
+      - type: git
+        url: https://github.com/TechCore3/DistroShop.git
+        tag: v1.2.0
+        commit: 52da1d9312eee9a222e1e4fe2926f4fd5084eb84
+      - cargo-sources.json
