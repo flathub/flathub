@@ -1,0 +1,72 @@
+app-id: ai.lykos.StabilityMatrix
+runtime: org.freedesktop.Sdk
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: StabilityMatrix
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet9
+build-options:
+  prepend-path: "/usr/lib/sdk/dotnet9/bin"
+  append-ld-library-path: "/usr/lib/sdk/dotnet9/lib"
+  prepend-pkg-config-path: "/usr/lib/sdk/dotnet9/lib/pkgconfig"
+
+
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --talk-name=org.freedesktop.FileManager1
+  - --filesystem=~/StabilityMatrix:create
+  - --env=DOTNET_ROOT=/app/lib/dotnet
+
+modules:
+  - name: dotnet
+    buildsystem: simple
+    build-commands:
+    - /usr/lib/sdk/dotnet9/bin/install.sh
+
+  # https://github.com/LykosAI/StabilityMatrix/issues/554#issuecomment-2367073265
+  - name: libxcrypt
+    buildsystem: autotools
+    config-opts:
+      - --enable-obsolete-api=glibc
+    cleanup:
+      - /include
+      - /lib/libcrypt.la
+      - /lib/libcrypt.so
+      - /lib/pkgconfig
+      - /share
+    sources:
+      - type: git
+        url: https://github.com/besser82/libxcrypt.git
+        tag: v4.5.2
+        commit: db70b42bd7b2a5b00a8580c8dec0aa66791c950a
+
+  - name: StabilityMatrix
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/LykosAI/StabilityMatrix.git
+        tag: v2.16.5
+        commit: 663f5257e69303101d39019f4258b8dc23b1e1c3
+      - ./nuget-sources.json 
+      - type: file
+        path: ai.lykos.StabilityMatrix.desktop
+      - type: file
+        path: ai.lykos.StabilityMatrix.metainfo.xml
+    build-commands:
+      # portable mode defaults to /app/lib/StabilityMatrix*
+      - sed -i 's/IsPortableMode = true;/IsPortableMode = false;/' StabilityMatrix.Avalonia/ViewModels/Dialogs/SelectDataDirectoryViewModel.cs
+      - sed -i 's/<StackPanel Grid.Row="2" Orientation="Vertical">/<StackPanel Grid.Row="2" Orientation="Vertical" IsVisible="False">/' StabilityMatrix.Avalonia/Views/Dialogs/SelectDataDirectoryDialog.axaml
+      # remove update popup since csproj ver does not match git tag
+      - sed -i 's/<Version>.*<\/Version>/<Version>2.16.5<\/Version>/' StabilityMatrix.Avalonia/StabilityMatrix.Avalonia.csproj
+
+      - rm -f NuGet.Config
+      - dotnet publish StabilityMatrix.Avalonia/StabilityMatrix.Avalonia.csproj -c Release -r linux-x64 --no-self-contained --source ./nuget-sources -p:HUSKY=0 -o ${FLATPAK_DEST}/lib/StabilityMatrix
+      - mkdir -p ${FLATPAK_DEST}/bin
+      - ln -s ${FLATPAK_DEST}/lib/StabilityMatrix/StabilityMatrix.Avalonia ${FLATPAK_DEST}/bin/StabilityMatrix
+
+      - install -Dm 644 StabilityMatrix/Assets/Icon.png /app/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+      - install -Dm 644 ${FLATPAK_ID}.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm 644 ${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
