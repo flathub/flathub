@@ -1,0 +1,365 @@
+id: io.github.rabbitgramdesktop.rabbitgramdesktop
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: rabbitGram
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=all
+  - --system-talk-name=org.bluez
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.gnome.Mutter.IdleMonitor
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --talk-name=com.canonical.indicator.application
+  - --talk-name=org.ayatana.indicator.application
+  - --talk-name=org.sigxcpu.Feedback
+  - --filesystem=xdg-download:rw
+  - --unset-env=QT_PLUGIN_PATH
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  cflags: -g1
+  cxxflags: -g1
+  env:
+    CCACHE_COMPILERCHECK: '%compiler% -v'
+    CMAKE_BUILD_TYPE: None
+    CMAKE_PREFIX_PATH: /app
+    CARGO_NET_OFFLINE: 'true'
+    CARGO_PROFILE_RELEASE_OPT_LEVEL: '3'
+    CARGO_PROFILE_RELEASE_LTO: off
+    CARGO_PROFILE_RELEASE_PANIC: unwind
+modules:
+  - name: pkg-config
+    buildsystem: simple
+    build-commands:
+      - install -d $FLATPAK_DEST/bin
+      - |
+        cat <<EOF > $FLATPAK_DEST/bin/pkg-config
+        #!/bin/sh
+        unset PKG_CONFIG_ALLOW_SYSTEM_LIBS
+        exec /usr/bin/pkg-config "\$@"
+        EOF
+      - chmod +x $FLATPAK_DEST/bin/pkg-config
+    cleanup:
+      - '*'
+
+  - name: implib
+    buildsystem: simple
+    build-commands:
+      - |
+        install -d $FLATPAK_DEST/lib
+        mkdir build
+        cd build
+        implib() {
+          LIBFILE=$(basename $1)
+          LIBNAME=$(basename $1 .so)
+          ../implib-gen.py -q $1
+          gcc $CFLAGS -c -o $LIBFILE.tramp.o $LIBFILE.tramp.S
+          gcc $CFLAGS -c -o $LIBFILE.init.o $LIBFILE.init.c
+          ar rcs $FLATPAK_DEST/lib/$LIBNAME.a $LIBFILE.tramp.o $LIBFILE.init.o
+        }
+        implib /usr/lib/$FLATPAK_ARCH-linux-gnu/libgtk-3.so
+        implib /usr/lib/$FLATPAK_ARCH-linux-gnu/libgdk-3.so
+    sources:
+      - type: git
+        url: https://github.com/yugr/Implib.so.git
+        commit: ecf7bb51a92a0fb16834c5b698570ab25f9f1d21
+    cleanup:
+      - '*'
+
+  - name: jinja2
+    buildsystem: simple
+    build-commands:
+      - pip3 install --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST}
+        flit-core --no-build-isolation
+      - pip3 install --exists-action=i --no-index --find-links="file://${PWD}" --prefix=${FLATPAK_DEST}
+        "Jinja2" --no-build-isolation
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/e7/91/add211b38c357bf1b94900b4f79c34661a92be65c0243d2b0a3393c5092d/flit_core-4.1.0.tar.gz
+        sha256: 62e12b63ead8335b37f59fabb977c7167fe476dafb5e41785dfa8c9aff843bc6
+        x-checker-data:
+          type: pypi
+          name: flit-core
+      - type: file
+        url: https://files.pythonhosted.org/packages/38/9b/e422a865e1d5d57d0e509b4e0bf1c1a70a7f6382c29a5aa428df994c8bc8/markupsafe-3.0.4.tar.gz
+        sha256: 2e9ad7dd851bf45fab9f75cbff4cb493fee9979e8d8c7c9c3ee119022518edd6
+        x-checker-data:
+          type: pypi
+          name: MarkupSafe
+      - type: file
+        url: https://files.pythonhosted.org/packages/df/bf/f7da0350254c0ed7c72f3e33cef02e048281fec7ecec5f032d4aac52226b/jinja2-3.1.6.tar.gz
+        sha256: 0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d
+        x-checker-data:
+          type: pypi
+          name: Jinja2
+    cleanup:
+      - '*'
+
+  - name: systemd
+    buildsystem: meson
+    builddir: true
+    config-opts:
+      - --buildtype=plain
+    make-args:
+      - systemd-detect-virt
+    no-make-install: true
+    post-install:
+      - install -Dt "$FLATPAK_DEST/bin" systemd-detect-virt
+    sources:
+      - type: git
+        url: https://github.com/systemd/systemd.git
+        commit: 73612ea502d53baf9b0df4336cfc296a7ee0d524
+        tag: v262.1
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/systemd/systemd/releases/latest
+          tag-query: .tag_name
+          timestamp-query: .published_at
+          version-query: $tag | sub("^[vV]"; "")
+      - type: shell
+        commands:
+          - >-
+            sed -i "s/'link_with' : libshared/'link_with' : [libshared_static, libsystemd_static,
+            libbasic_static]/" meson.build
+
+  - name: boost
+    buildsystem: simple
+    build-commands:
+      - ./bootstrap.sh --prefix=${FLATPAK_DEST} --with-libraries=regex
+      - ./b2 release link=static cflags="$CFLAGS" cxxflags="$CXXFLAGS" linkflags="$LDFLAGS"
+        -j$FLATPAK_BUILDER_N_JOBS install
+    sources:
+      - type: archive
+        url: https://archives.boost.io/release/1.92.0/source/boost_1_92_0.tar.bz2
+        sha256: 5c1d40cb8e19adbf740a4ec2da35b3e58f3f5804b1dce44deb53df72193cbc6c
+        x-checker-data:
+          type: anitya
+          project-id: 6845
+          stable-only: true
+          url-template: https://archives.boost.io/release/$version/source/boost_${major}_${minor}_${patch}.tar.bz2
+    cleanup:
+      - '*'
+
+  - name: ada
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_TESTING=OFF
+      - -DADA_TOOLS=OFF
+    sources:
+      - type: git
+        url: https://github.com/ada-url/ada.git
+        commit: b12a893a45809da8103bb4f1e2f6f5ee13f9100b
+        tag: v4.0.0
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/ada-url/ada/releases/latest
+          tag-query: .tag_name
+          timestamp-query: .published_at
+          version-query: $tag | sub("^[vV]"; "")
+    cleanup:
+      - '*'
+
+  - name: mozjpeg
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - -DCMAKE_INSTALL_DEFAULT_LIBDIR=lib
+      - -DENABLE_SHARED=OFF
+      - -DPNG_SUPPORTED=OFF
+    sources:
+      - type: git
+        url: https://github.com/mozilla/mozjpeg.git
+        commit: 6c9f0897afa1c2738d7222a0a9ab49e8b536a267
+        tag: v4.1.5
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\\d.]+)$
+    cleanup:
+      - '*'
+
+  - name: openh264
+    buildsystem: meson
+    config-opts:
+      - --buildtype=plain
+      - --default-library=static
+      - -Dtests=disabled
+    sources:
+      - type: git
+        url: https://github.com/cisco/openh264.git
+        commit: 1bca62311e447fd9c39fc93de2c4b96cd5ce971c
+        tag: v2.7.0
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/cisco/openh264/releases/latest
+          tag-query: .tag_name
+          timestamp-query: .published_at
+          version-query: $tag | sub("^[vV]"; "")
+    cleanup:
+      - '*'
+
+  - name: minizip
+    subdir: contrib/minizip
+    config-opts:
+      - --disable-shared
+    sources:
+      - type: git
+        url: https://github.com/madler/zlib.git
+        commit: e3dc0a85b7032e98380dec011bc8f2c2ee0d8fca
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\\d.]+)$
+          versions:
+            '>': 1.3.2
+      - type: shell
+        commands:
+          - cd contrib/minizip && autoreconf -fi
+    cleanup:
+      - '*'
+
+  - name: rnnoise
+    config-opts:
+      - --disable-shared
+      - --disable-examples
+      - --disable-doc
+    sources:
+      - type: archive
+        url: https://github.com/xiph/rnnoise/releases/download/v0.2/rnnoise-0.2.tar.gz
+        sha256: 90fce4b00b9ff24c08dbfe31b82ffd43bae383d85c5535676d28b0a2b11c0d37
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/xiph/rnnoise/releases/latest
+          tag-query: .tag_name
+          timestamp-query: .published_at
+          version-query: $tag | sub("^[vV]"; "")
+          url-query: '"https://github.com/xiph/rnnoise/releases/download/\($tag)/rnnoise-\($version).tar.gz"'
+      - type: shell
+        commands:
+          - sed -i 's/os_support.h/common.h/g;s/OPUS_CLEAR/RNN_CLEAR/g' src/vec{,_neon}.h
+    cleanup:
+      - '*'
+
+  - name: qt
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_SHARED_LIBS=OFF
+      - -DBUILD_WITH_PCH=OFF
+      - -DQT_BUILD_SUBMODULES=qtbase;qtdeclarative;qtimageformats;qtshadertools;qtsvg;qtwayland
+      - -DQT_QPA_PLATFORMS=wayland;xcb
+      - -DFEATURE_glibc_fortify_source=OFF
+      - -DINPUT_openssl=linked
+    sources:
+      - type: archive
+        url: https://download.qt.io/archive/qt/6.11/6.11.2/single/qt-everywhere-src-6.11.2.tar.xz
+        sha256: 6dcfbca271d76a6502741a2c0dc6fc98ef7dd0b7b4cfd0abcebb285a86a26f33
+      - type: git
+        url: https://github.com/desktop-app/patches.git
+        commit: a895fef40eaa7d66481cff542c623b039b7ce494
+        dest: patches
+      - type: shell
+        commands:
+          - |
+            set -euo pipefail
+            QT="$(grep 'set(QT_REPO_MODULE_VERSION' qtbase/.cmake.conf | sed -r 's/.*"(.*)".*/\1/')"
+            find $PWD/patches/qtbase_${QT} -type f -print0 | sort -z | xargs -r0 git -C qtbase apply
+            find $PWD/patches/qtwayland_${QT} -type f -print0 | sort -z | xargs -r0 git -C qtwayland apply
+    cleanup:
+      - '*'
+
+  - name: tg_owt
+    buildsystem: cmake-ninja
+    builddir: true
+    sources:
+      - type: git
+        url: https://github.com/desktop-app/tg_owt.git
+        commit: 07fb35bc33b3e79125a1beab7690e830f183f5d8
+    cleanup:
+      - '*'
+
+  - name: tde2e
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DTD_E2E_ONLY=ON
+    sources:
+      - type: git
+        url: https://github.com/tdlib/td.git
+        commit: 51743dfd01dff6179e2d8f7095729caa4e2222e9
+    cleanup:
+      - '*'
+
+  - name: tdesktop_rust
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/tdesktop_rust/cargo
+    build-commands:
+      - |
+        set -euo pipefail
+        cargo new --lib --vcs none tdesktop_rust
+        cd tdesktop_rust
+        printf 'pub use ::tlottie;\npub use ::wallet_engine;\n' > src/lib.rs
+        cargo add --path ../tlottie --features c-api
+        cargo add --path ../wallet-engine
+        cargo rustc --lib --release \
+          --crate-type staticlib --crate-type cdylib \
+          -- --print native-static-libs
+        mkdir -p $FLATPAK_DEST/lib $FLATPAK_DEST/include/tlottie $FLATPAK_DEST/include/wallet_engine
+        objcopy --strip-debug target/release/libtdesktop_rust.a $FLATPAK_DEST/lib/libtdesktop_rust.a
+        cp ../tlottie/include/tlottie.h $FLATPAK_DEST/include/tlottie/tlottie.h
+        cargo run --locked --manifest-path ../wallet-engine/bindgen/cpp/bindgen/Cargo.toml -- \
+          --library --out-dir $FLATPAK_DEST/include/wallet_engine \
+          target/release/libtdesktop_rust.so
+    sources:
+      - type: git
+        dest: tlottie
+        url: https://github.com/dkaraush/tlottie.git
+        commit: 92df98dc209bc39b1e567ec74a8c86a0af5239de
+        x-cargo-lock:
+          - Cargo.lock
+      - type: git
+        dest: wallet-engine
+        url: https://github.com/i582/wallet-engine.git
+        commit: e59e0d89d7ee90c388bf36e3334c5b276f396697
+        x-cargo-lock:
+          - Cargo.lock
+          - bindgen/cpp/Cargo.lock
+      - type: git
+        url: https://github.com/desktop-app/patches.git
+        commit: a895fef40eaa7d66481cff542c623b039b7ce494
+        dest: patches
+      - type: shell
+        commands:
+          - git -C wallet-engine apply $PWD/patches/wallet-engine.patch
+      - tdesktop_rust.yml
+    cleanup:
+      - '*'
+
+  - name: rabbitgram
+    buildsystem: cmake-ninja
+    builddir: true
+    build-options:
+      cflags: -fpch-preprocess
+      cxxflags: -fpch-preprocess
+      env:
+        CCACHE_SLOPPINESS: pch_defines,time_macros
+    config-opts:
+      - -DTDESKTOP_API_ID=611335
+      - -DTDESKTOP_API_HASH=d524b414d21f4d37f08684c1df41ac9c
+    post-install:
+      - ccache --evict-older-than 1d
+    sources:
+      - type: git
+        url: https://github.com/rabbitgramdesktop/rabbitgramdesktop.git
+        commit: 129a710b340c7b904332a3aaf20b4e74ae750ee3
+    cleanup:
+      - /share/icons/hicolor/512x512@2
