@@ -1,0 +1,48 @@
+app-id: io.github.koeroesi86.Tunelle
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '26.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+command: Tunelle
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  - --socket=pulseaudio
+  - --share=network
+  - --filesystem=xdg-music:ro
+  - --own-name=org.mpris.MediaPlayer2.chromium.*
+modules:
+  - name: Tunelle
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node24/bin
+      env:
+        XDG_CACHE_HOME: /run/build/Tunelle/flatpak-node/cache
+        npm_config_cache: /run/build/Tunelle/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+    build-commands:
+      - npm ci --offline --ignore-scripts
+      - npm version $(git describe --tags --exact-match | sed 's/^v//') --no-git-tag-version --allow-same-version
+      - npm rebuild sqlite3 --build-from-source
+      - npm run build
+      - npx electron-builder --linux dir --publish never -c.npmRebuild=false
+      - cp -r dist/linux-*unpacked $FLATPAK_DEST/lib/tunelle
+      - install -Dm755 tunelle.sh $FLATPAK_DEST/bin/Tunelle
+      - install -Dm644 flatpak/io.github.koeroesi86.Tunelle.desktop -t $FLATPAK_DEST/share/applications
+      - install -Dm644 flatpak/io.github.koeroesi86.Tunelle.metainfo.xml -t $FLATPAK_DEST/share/metainfo
+      - for size in 16 24 32 48 64 128 256 512; do install -Dm644 icons/png/${size}x${size}.png $FLATPAK_DEST/share/icons/hicolor/${size}x${size}/apps/io.github.koeroesi86.Tunelle.png; done
+    sources:
+      - type: script
+        dest-filename: tunelle.sh
+        commands:
+          - exec zypak-wrapper /app/lib/tunelle/Tunelle "$@"
+      - type: git
+        url: https://github.com/koeroesi86/tunelle.git
+        tag: v26.10.13
+        commit: 17a67e241e65a12398194df18a3ad0bf161fbbc1
+      - generated-sources.json
