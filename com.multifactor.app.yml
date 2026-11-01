@@ -1,0 +1,52 @@
+# Multifactor on Flathub (#3679, D600). This folder is what the Flathub repository
+# flathub/com.multifactor.app holds: the first time, its four files go in the submission PR to
+# flathub/flathub (branch new-pr). It repackages the release's Linux .deb, pinned by its versioned
+# URL and sha256, and builds nothing itself.
+#
+# New releases need no Flathub token in our CI: Flathub's external data checker reads
+# x-checker-data below, sees the version downloads.multifactor.com's latest.json names, and opens
+# the PR that moves the .deb's URL and sha256 (and adds the release to the metainfo).
+#
+# The app's own updater is off here: the binary sees /.flatpak-info and FLATPAK_ID
+# (apps/native/src/lib.rs), so Lite never checks for a binary update. x86_64 only for now.
+id: com.multifactor.app
+runtime: org.gnome.Platform
+runtime-version: "51"
+sdk: org.gnome.Sdk
+command: Multifactor
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Nothing more: the app uses no keyring (Secret Service) and sends no notifications on Linux
+  # (D600). A feature that needs either adds its permission with it.
+modules:
+  - name: multifactor
+    buildsystem: simple
+    sources:
+      - type: file
+        dest-filename: multifactor.deb
+        url: https://downloads.multifactor.com/files/1.4.1/Multifactor_1.4.1_amd64.deb
+        sha256: 3c8d2029f13729aaff0736431434afa7876a058b8941c3702b4e491b115cc168
+        only-arches:
+          - x86_64
+        x-checker-data:
+          type: json
+          url: https://downloads.multifactor.com/latest/latest.json
+          version-query: .version
+          url-query: '"https://downloads.multifactor.com/files/" + $version + "/Multifactor_" + $version + "_amd64.deb"'
+          is-main-source: true
+      - type: file
+        path: com.multifactor.app.desktop
+      - type: file
+        path: com.multifactor.app.metainfo.xml
+    build-commands:
+      - ar -x multifactor.deb
+      - tar -xf data.tar.*
+      - install -Dm755 usr/bin/Multifactor /app/bin/Multifactor
+      - install -Dm644 com.multifactor.app.desktop /app/share/applications/com.multifactor.app.desktop
+      - install -Dm644 com.multifactor.app.metainfo.xml /app/share/metainfo/com.multifactor.app.metainfo.xml
+      - for size in 32x32 64x64 128x128 512x512; do install -Dm644 usr/share/icons/hicolor/$size/apps/Multifactor.png
+        /app/share/icons/hicolor/$size/apps/com.multifactor.app.png; done
