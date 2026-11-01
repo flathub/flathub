@@ -1,0 +1,152 @@
+app-id: com.openselena.omniget
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node22
+
+command: omniget
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --socket=pipewire
+  - --device=dri
+  - --filesystem=xdg-download
+  - --filesystem=xdg-videos
+  - --filesystem=xdg-music
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.FileManager1
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node22/bin
+  env:
+    CARGO_HOME: /run/build/omniget/cargo
+    npm_config_nodedir: /usr/lib/sdk/node22
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/*.la
+  - /share/man
+
+modules:
+  - name: intltool
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz
+        sha256: 67c74d94196b153b774ab9f89b2fa6c6ba79352407037c8c14d5aeb334e959cd
+
+  - name: libayatana-appindicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_BINDINGS_MONO=NO
+      - -DENABLE_BINDINGS_VALA=NO
+      - -DENABLE_GTKDOC=NO
+    modules:
+      - name: libdbusmenu
+        buildsystem: autotools
+        build-options:
+          cflags: -Wno-error
+        config-opts:
+          - --with-gtk=3
+          - --disable-dumper
+          - --disable-static
+          - --disable-tests
+          - --disable-gtk-doc
+          - --enable-introspection=no
+          - --disable-vala
+        sources:
+          - type: archive
+            url: https://launchpad.net/libdbusmenu/16.04/16.04.0/+download/libdbusmenu-16.04.0.tar.gz
+            sha256: b9cc4a2acd74509435892823607d966d424bd9ad5d0b00938f27240a1bfa878a
+          - type: patch
+            path: 0001-Fix-HAVE_VALGRIND-AM_CONDITIONAL.patch
+
+      - name: ayatana-ido
+        buildsystem: cmake-ninja
+        config-opts:
+          - -DENABLE_INTROSPECTION=OFF
+        sources:
+          - type: git
+            url: https://github.com/AyatanaIndicators/ayatana-ido.git
+            tag: '0.10.4'
+            commit: f968079b09e2310fefc3fc307359025f1c74b3eb
+          - type: patch
+            path: 0001-Make-introspection-configurable.patch
+
+      - name: libayatana-indicator
+        buildsystem: cmake-ninja
+        sources:
+          - type: git
+            url: https://github.com/AyatanaIndicators/libayatana-indicator.git
+            tag: '0.9.4'
+            commit: 611bb384b73fa6311777ba4c41381a06f5b99dad
+
+    sources:
+      - type: git
+        url: https://github.com/AyatanaIndicators/libayatana-appindicator.git
+        tag: '0.5.94'
+        commit: 31e8bb083b307e1cc96af4874a94707727bd1e79
+
+  - name: ffmpeg
+    buildsystem: autotools
+    config-opts:
+      - --disable-doc
+      - --disable-debug
+      - --enable-gpl
+      - --enable-shared
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-7.1.tar.xz
+        sha256: 40973d44970dbc83ef302b0609f2e74982be2d85916dd2ee7472d30678a7abe6
+    cleanup:
+      - /share/ffmpeg
+
+  - name: yt-dlp
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 yt-dlp /app/bin/yt-dlp
+    sources:
+      - type: file
+        url: https://github.com/yt-dlp/yt-dlp/releases/download/2026.02.04/yt-dlp
+        sha256: f244941f771c922ffb63d64e17b8762d364b067f38a3caad60386496b3d226f7
+        dest-filename: yt-dlp
+        only-arches:
+          - x86_64
+      - type: file
+        url: https://github.com/yt-dlp/yt-dlp/releases/download/2026.02.04/yt-dlp_linux_aarch64
+        sha256: 6b83f090768a9d428456b7998a5b8fc1c628895647df2763f54f9552601b732e
+        dest-filename: yt-dlp
+        only-arches:
+          - aarch64
+
+  - name: omniget
+    buildsystem: simple
+    build-options:
+      env:
+        npm_config_cache: /run/build/omniget/flatpak-node/npm-cache
+    build-commands:
+      - npm install --offline
+      - npx vite build
+      - cargo --offline build --release --manifest-path src-tauri/Cargo.toml
+      - install -Dm755 src-tauri/target/release/omniget /app/bin/omniget
+      - install -Dm644 flatpak/com.openselena.omniget.desktop /app/share/applications/com.openselena.omniget.desktop
+      - install -Dm644 flatpak/com.openselena.omniget.metainfo.xml /app/share/metainfo/com.openselena.omniget.metainfo.xml
+      - install -Dm644 flatpak/com.openselena.omniget.png /app/share/icons/hicolor/128x128/apps/com.openselena.omniget.png
+    sources:
+      - type: archive
+        url: https://github.com/OpenSelena/omniget/archive/refs/tags/v0.14.0.tar.gz
+        sha256: e8655a4941104b64802ef47d5297eb7bbaadea1a30419a8b808e977f2e28a829
+      - type: file
+        path: package-lock.json
+      - cargo-sources.json
+      - node-sources.json
