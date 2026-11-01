@@ -1,0 +1,77 @@
+# Flatpak manifest for OpenBurn.
+#
+# This is a staging copy. To submit to Flathub, the manifest and
+# node-sources.json must be copied to the root of a fork of the
+# flathub/flathub repository and opened as a pull request by the
+# upstream maintainer.
+#
+# Build locally (requires flatpak-builder):
+#   flatpak-builder --user --install --force-clean build-dir \
+#     flatpak/io.github.SJLS27.OpenBurn.yml
+#
+# Regenerate the offline npm/Electron sources after dependency changes:
+#   flatpak-node-generator npm package-lock.json -o flatpak/node-sources.json
+
+id: io.github.SJLS27.OpenBurn
+base: org.electronjs.Electron2.BaseApp
+base-version: '26.08'
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+command: openburn
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # GRBL machines are USB serial devices (/dev/ttyUSB*, /dev/ttyACM*).
+  # This also exposes DRI devices for hardware-accelerated rendering.
+  - --device=all
+  # Projects, artwork and exported GCode are opened and saved wherever the
+  # user keeps them.
+  - --filesystem=home
+  - --env=ELECTRON_OZONE_PLATFORM_HINT=auto
+
+modules:
+  - name: openburn
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node22/bin
+      env:
+        npm_config_cache: /run/build/openburn/flatpak-node/npm-cache/
+        ELECTRON_CACHE: /run/build/openburn/flatpak-node/cache/electron
+        electron_config_cache: /run/build/openburn/flatpak-node/cache/electron
+        ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        XDG_CACHE_HOME: /run/build/openburn/flatpak-node/cache
+        TMPDIR: /run/build/openburn/flatpak-node/tmp
+    build-commands:
+      - mkdir -p $TMPDIR
+      - npm ci --offline --no-audit --no-fund
+      - npm run build
+      - ./node_modules/.bin/electron-builder --linux --dir
+        -c.electronDist=/run/build/openburn/flatpak-node/cache/electron
+        -c.npmRebuild=false
+        -c.buildDependenciesFromSource=false
+      - cp -a release/linux-unpacked/. /app/openburn/
+      - patch-electron-desktop-filename /app/openburn/resources/app.asar
+      - install -Dm755 flatpak/openburn.sh /app/bin/openburn
+      - install -Dm644 build/linux/io.github.SJLS27.OpenBurn.desktop
+        /app/share/applications/io.github.SJLS27.OpenBurn.desktop
+      - install -Dm644 build/linux/io.github.SJLS27.OpenBurn.metainfo.xml
+        /app/share/metainfo/io.github.SJLS27.OpenBurn.metainfo.xml
+      - |
+        for size in 16 24 32 48 64 128 256 512; do
+          install -Dm644 \
+            "build/linux/icons/hicolor/${size}x${size}/apps/io.github.SJLS27.OpenBurn.png" \
+            "/app/share/icons/hicolor/${size}x${size}/apps/io.github.SJLS27.OpenBurn.png"
+        done
+      - install -Dm644 LICENSE /app/share/licenses/$FLATPAK_ID/LICENSE
+      - install -Dm644 public/fonts/Inter-LICENSE.txt
+        /app/share/licenses/$FLATPAK_ID/Inter-LICENSE.txt
+    sources:
+      - type: git
+        url: https://github.com/SJLS27/openburn.git
+        tag: v0.9.0
+      - node-sources.json
