@@ -1,0 +1,56 @@
+# Flatpak manifest for Flathub. Builds from source with no network access:
+# the Rust crates and npm packages come from cargo-sources.json and node-sources.json
+# (made by flatpak-builder-tools, see update-sources.sh).
+id: io.github.quietbytehq.timewizer
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node22
+command: timewizer
+
+finish-args:
+  # A window, nothing else. Timewizer is offline and only touches files the person picks in the
+  # file dialog (the dialog goes through the desktop portal, so no file-system permission is needed).
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+
+modules:
+  - name: timewizer
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node22/bin
+      env:
+        CARGO_HOME: /run/build/timewizer/cargo
+        CARGO_NET_OFFLINE: 'true'
+        XDG_CACHE_HOME: /run/build/timewizer/flatpak-node/cache
+        npm_config_cache: /run/build/timewizer/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+    build-commands:
+      # The packages needed to build the page (without the test tools), as listed in node-sources.json.
+      - cp packaging/flatpak/build/package.json packaging/flatpak/build/package-lock.json .
+      - npm ci --offline --no-audit --no-fund
+      - npm run build
+      - cargo build --release --offline --locked --manifest-path src-tauri/Cargo.toml --bin timewizer --features tauri/custom-protocol
+      - install -Dm755 src-tauri/target/release/timewizer /app/bin/timewizer
+      # Flatpak adds file forwarding (@@ %f @@) itself on export, so a double-clicked school file reaches the app.
+      - sed 's|^Exec=.*|Exec=timewizer %f|' packaging/linux/io.github.quietbytehq.timewizer.desktop > timewizer.desktop
+      - install -Dm644 timewizer.desktop /app/share/applications/io.github.quietbytehq.timewizer.desktop
+      - install -Dm644 packaging/linux/io.github.quietbytehq.timewizer.metainfo.xml /app/share/metainfo/io.github.quietbytehq.timewizer.metainfo.xml
+      - install -Dm644 packaging/linux/io.github.quietbytehq.timewizer.xml /app/share/mime/packages/io.github.quietbytehq.timewizer.xml
+      - install -Dm644 assets/timewizer-logo.svg /app/share/icons/hicolor/scalable/apps/io.github.quietbytehq.timewizer.svg
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.quietbytehq.timewizer.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/io.github.quietbytehq.timewizer.png
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/io.github.quietbytehq.timewizer.png
+    sources:
+      # Flathub builds a tagged release. After the tag is pushed, copy its full commit id here:
+      #   git rev-parse v0.2.0
+      - type: git
+        url: https://github.com/quietbytehq/timewizer.git
+        tag: v0.2.0
+        commit: 6360808fcb09a581a6f4ad11a1d89376127e628c
+      - cargo-sources.json
+      - node-sources.json
