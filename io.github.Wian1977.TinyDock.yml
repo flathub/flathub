@@ -1,0 +1,103 @@
+# Flathub submission manifest for TinyDock
+#
+# App ID: io.github.Wian1977.TinyDock  (code-hosting ID -> github.com/Wian1977/TinyDock)
+#
+# !!! READ flathub/SUBMIT.md BEFORE SUBMITTING !!!
+# This is a STARTING SCAFFOLD. It has NOT been built/tested (no flatpak in the
+# authoring environment). Open items to resolve on a machine with network +
+# flatpak-builder before opening the PR:
+#   1. runtime-version must be the LATEST GNOME runtime at submission time.
+#   2. libwnck / libXRes modules use git tags -> pin to an exact commit: and
+#      verify they build inside org.gnome.Sdk (meson; xorgproto/libX11-dev are
+#      present in the SDK).
+#   3. DONE (src/main.rs): launching now delegates to flatpak-spawn --host
+#      gtk-launch inside Flatpak (needs --talk-name=org.freedesktop.Flatpak),
+#      falling back to gio launch. Autostart self-registers
+#      ~/.config/autostart when running in Flatpak (ensure_autostart()).
+#   4. Autostart writes /etc/xdg/autostart (forbidden in Flatpak). Move it to
+#      ~/.config/autostart at first run (code change).
+#   5. tclock (eframe) needs OpenGL. Verify the GL extension + device=dri; you
+#      may need EFRAME_BACKEND=glow (OpenGL) instead of wgpu/Vulkan.
+# A dock is a POOR fit for Flatpak (deep desktop integration). See SUBMIT.md for
+# the honest trade-off vs. just shipping the existing .deb / a PPA.
+
+id: io.github.Wian1977.TinyDock
+runtime: org.gnome.Platform
+runtime-version: "48"      # TODO: set to the latest GNOME runtime at submission
+sdk: org.gnome.Sdk
+command: tinydock-launch
+
+# Metadata files (live upstream too; included here for the initial submission).
+rename-desktop-file: io.github.Wian1977.TinyDock.desktop
+rename-appdata-file: io.github.Wian1977.TinyDock.metainfo.xml
+rename-icon: io.github.Wian1977.TinyDock
+
+add-extensions:
+  org.freedesktop.Platform.GL:   # Mesa GL for tclock (eframe)
+    version: "48"                # must match runtime-version
+    subdirectories: true
+  org.freedesktop.Platform.GL32:
+    version: "48"
+    subdirectories: true
+
+finish-args:
+  - --socket=fallback-x11        # libwnck + GTK need X11; Wayland unsupported by libwnck
+  - --socket=wayland             # tclock GL may use it
+  - --device=dri                 # OpenGL for tclock
+  - --share=ipc
+  - --talk-name=org.freedesktop.Flatpak   # lets launch_id() call flatpak-spawn --host to start host apps
+  # No --share=network, no --filesystem=home. Host apps are launched via
+  # flatpak-spawn --host gtk-launch (see src/main.rs launch_id), not spawned directly.
+
+sources:
+  - type: file
+    path: io.github.Wian1977.TinyDock.desktop
+  - type: file
+    path: io.github.Wian1977.TinyDock.metainfo.xml
+  - type: file
+    path: io.github.Wian1977.TinyDock.svg
+
+modules:
+  - name: libxres
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://gitlab.freedesktop.org/xorg/lib/libXRes.git
+        tag: libXRes-1.2.1       # TODO: pin to a commit for reproducibility
+
+  - name: libwnck
+    buildsystem: meson
+    config-opts:
+      - -Dintrospection=false
+      - -Dgtk_doc=false
+      - -Dtools=false
+    sources:
+      - type: git
+        url: https://gitlab.gnome.org/GNOME/libwnck.git
+        tag: "43.0"              # TODO: pin to a commit; 43.0 matches DEVELOPMENT.md
+
+  - name: tinydock
+    buildsystem: cargo
+    sources:
+      - type: git
+        url: https://github.com/Wian1977/TinyDock.git
+        tag: v1.0                # TODO: point at the exact release ref
+      - cargo-sources-tinydock.json
+
+  - name: tclock
+    buildsystem: cargo
+    subdir: tclock
+    sources:
+      - type: git
+        url: https://github.com/Wian1977/TinyDock.git
+        tag: v1.0
+      - cargo-sources-tclock.json
+
+  - name: tinydock-launch
+    buildsystem: simple
+    sources:
+      - type: file
+        path: tinydock-launch
+        dest-filename: tinydock-launch
+    build-commands:
+      - install -Dm0755 tinydock-launch -t /app/bin
