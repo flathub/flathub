@@ -4,25 +4,50 @@ runtime-version: "51"
 sdk: org.gnome.Sdk
 command: mortar
 finish-args:
-  - --share=network
+  # The WebKitGTK window, and controllers for gamepad navigation. The input device type needs Flatpak 1.16, and
+  # Ubuntu 24.04 and Debian 12 ship older than that; so this grants every device (which includes the GPU.)
   - --socket=wayland
   - --socket=fallback-x11
   - --share=ipc
-  - --device=dri
-  - --filesystem=xdg-config/StardewValley
+  - --device=all
+  # Mod downloads and catalog updates.
+  - --share=network
+  # Steam libraries: native, Debian and Ubuntu's (~/.steam/debian-installation), the Snap and the Flatpak.
   - --filesystem=xdg-data/Steam
+  - --filesystem=~/.steam
+  - --filesystem=~/snap/steam
   - --filesystem=~/.var/app/com.valvesoftware.Steam
-  - --filesystem=~/.var/app/com.valvesoftware.Steam/.config/StardewValley
+  # Heroic: we read its configs to find what it installed. The Flatpak gets its own folder too.
   - --filesystem=xdg-config/heroic:ro
-  - --filesystem=xdg-data/lutris:ro
-  - --filesystem=~/.var/app/net.lutris.Lutris
+  - --filesystem=~/snap/heroic:ro
   - --filesystem=~/.var/app/com.heroicgameslauncher.hgl
+  # Lutris: we read its game configs (older releases keep them under xdg-config.) The Flatpak gets its own folder too.
+  - --filesystem=xdg-data/lutris:ro
+  - --filesystem=xdg-config/lutris:ro
+  - --filesystem=~/.var/app/net.lutris.Lutris
+  # Bottles: native and Flatpak.
+  - --filesystem=xdg-data/bottles
+  - --filesystem=~/.var/app/com.usebottles.bottles/data/bottles
+  # Where GOG installs by default, and ~/Games for Heroic and Lutris.
   - --filesystem=~/GOG Games
-  - --filesystem=~/Games/Heroic
-  - --filesystem=xdg-download
+  - --filesystem=~/Games
+  # Game libraries on other drives. Removable drives mount under /run/media on Fedora and Arch, /media on Debian and Ubuntu.
   - --filesystem=/run/media
+  - --filesystem=/media
   - --filesystem=/mnt
-  - --talk-name=org.freedesktop.secrets
+  # Stardew Valley's saves, for save backups and the per-save mod list.
+  - --filesystem=xdg-config/StardewValley
+  # Mod archives you downloaded by hand.
+  - --filesystem=xdg-download
+  # We read r2modman's and Gale's data folders so Import can bring their profiles over.
+  - --filesystem=xdg-config/r2modmanPlus-local:ro
+  - --filesystem=xdg-data/com.kesomannen.gale:ro
+  # Desktop notifications and the tray icon talk to these names directly (no portal.)
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # The tray item's name has the process id in it, which is 2 inside the sandbox.
+  - --own-name=org.kde.StatusNotifierItem-2-1
+  # flatpak-spawn --host: without it we can't start a game through the host's Steam or launcher.
   - --talk-name=org.freedesktop.Flatpak
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.golang
@@ -39,18 +64,22 @@ modules:
         GOTOOLCHAIN: local
         GOFLAGS: -modcacherw
         XDG_CACHE_HOME: /run/build/mortar/flatpak-node/cache
-        # package.json pins bun in packageManager, which yarn 1's Corepack guard otherwise refuses to run under.
+        # package.json pins bun in packageManager, and yarn 1's Corepack guard won't run under that without this.
         SKIP_YARN_COREPACK_CHECK: "1"
     build-commands:
-      # The Wails CLI comes from the fork go.mod pins; it generates the frontend's TypeScript bindings.
+      # We build the Wails CLI from the fork go.mod pins; it generates the frontend's TypeScript bindings.
       - go mod download github.com/wailsapp/wails/v3
       - go build -C "$(go list -m -f '{{.Dir}}' github.com/wailsapp/wails/v3)" -o /run/build/mortar/tools/wails3 ./cmd/wails3
-      # The build's HOME is not writable, so `yarn config set` would not persist; a project .yarnrc does.
+      - /run/build/mortar/tools/wails3 generate bindings -clean=true -ts -i
+      # package.json's `bindings` script runs this rewrite with bun, and the SDK doesn't ship bun.
+      - node scripts/erasable-bindings.ts
+      # Same trim render.sh did before it wrote yarn.lock (only the app's packages.)
+      - node build/linux/flathub/app-packages.ts
+      # The build's HOME isn't writable, so `yarn config set` wouldn't stick; a project .yarnrc does.
       - echo 'yarn-offline-mirror "/run/build/mortar/flatpak-node/yarn-mirror"' >.yarnrc
       - yarn install --offline --frozen-lockfile --ignore-scripts
-      - PATH="/run/build/mortar/tools:$PATH" yarn run bindings
-      # The catalogs, credits and notices the frontend's full build script regenerates are committed.
-      - cd frontend && ../node_modules/.bin/vite build --mode production
+      # Credits and notices are committed; we compile the Lingui catalogs from the .po files.
+      - cd frontend && ../node_modules/.bin/lingui compile --typescript && ../node_modules/.bin/vite build --mode production
       - >-
         go build -buildmode=pie -tags production -trimpath -buildvcs=false -o /app/bin/mortar
         -ldflags="-w -s -X main.packaged=flatpak -X github.com/Rethunk-Tech/mortar/internal/nxm.packaged=flatpak -extldflags '-Wl,-z,relro,-z,now'"
@@ -65,8 +94,8 @@ modules:
     sources:
       - type: git
         url: https://github.com/Rethunk-Tech/mortar.git
-        tag: v0.2.1
-        commit: 'c5f9c2fea58b225595de208c9879aead7fe8bf5f'
+        tag: v0.4.0
+        commit: "645d82010d2541d34d7a198ab76b3f981da051ae"
       - type: file
         path: yarn.lock
       - go-sources.json
