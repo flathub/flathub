@@ -1,0 +1,141 @@
+diff --git a/client/myna-desktop/src/dbus/background.rs b/client/myna-desktop/src/dbus/background.rs
+new file mode 100644
+index 00000000..58b0358b
+--- /dev/null
++++ b/client/myna-desktop/src/dbus/background.rs
+@@ -0,0 +1,112 @@
++//! Background-portal registration for the daemon.
++//!
++//! GNOME's background-apps list is identity-based, not process-based. A
++//! daemon with no GTK application ID still needs to tell the portal that it
++//! is running in the background and what its user-visible status is.
++
++use std::collections::HashMap;
++
++use futures_util::StreamExt;
++use zbus::Connection;
++use zbus::MessageStream;
++use zbus::message::Type;
++use zbus::zvariant::Value;
++
++#[zbus::proxy(
++    interface = "org.freedesktop.portal.Background",
++    default_service = "org.freedesktop.portal.Desktop",
++    default_path = "/org/freedesktop/portal/desktop"
++)]
++trait BackgroundPortal {
++    fn request_background(
++        &self,
++        parent_window: &str,
++        options: HashMap<&str, Value<'_>>,
++    ) -> zbus::Result<zbus::zvariant::OwnedObjectPath>;
++
++    fn set_status(&self, options: HashMap<&str, Value<'_>>) -> zbus::Result<()>;
++}
++
++pub async fn announce(conn: &Connection) {
++    let mut stream = MessageStream::from(conn);
++    let proxy = match BackgroundPortalProxy::new(conn).await {
++        Ok(proxy) => proxy,
++        Err(e) => {
++            myna_core::info_log!("dbus", "background portal unavailable: {e}");
++            return;
++        }
++    };
++
++    let mut request = HashMap::new();
++    request.insert("reason", Value::from("Run Myna dictation in the background"));
++    request.insert("autostart", Value::from(false));
++    let handle = match proxy.request_background("", request).await {
++        Ok(handle) => handle,
++        Err(e) => {
++            myna_core::info_log!("dbus", "background request failed: {e}");
++            return;
++        }
++    };
++    myna_core::info_log!("dbus", "background request opened at {handle}");
++
++    let response = async {
++        while let Some(msg) = stream.next().await {
++            let msg = match msg {
++                Ok(msg) => msg,
++                Err(e) => {
++                    myna_core::info_log!("dbus", "background request stream failed: {e}");
++                    return None;
++                }
++            };
++            let header = msg.header();
++            if header.primary().msg_type() != Type::Signal
++                || header.path().map(|p| p.as_str()) != Some(handle.as_str())
++                || header.member().map(|m| m.as_str()) != Some("Response")
++            {
++                continue;
++            }
++            return Some(msg);
++        }
++        None
++    };
++    let msg = match tokio::time::timeout(std::time::Duration::from_secs(5), response).await {
++        Ok(Some(msg)) => msg,
++        Ok(None) => {
++            myna_core::info_log!("dbus", "background request stream closed");
++            return;
++        }
++        Err(_) => {
++            myna_core::info_log!("dbus", "background request timed out");
++            return;
++        }
++    };
++
++    let body = msg.body();
++    let (code, results): (u32, HashMap<String, Value<'_>>) = match body.deserialize() {
++        Ok(response) => response,
++        Err(e) => {
++            myna_core::info_log!("dbus", "background response decode failed: {e}");
++            return;
++        }
++    };
++    // The response stream must not outlive the request. Keeping it alive while
++    // SetStatus refreshes forever can stop the same connection's object server
++    // from dispatching Toggle and property calls.
++    drop(stream);
++    myna_core::info_log!("dbus", "background request response {code} ({results:?})");
++    if code != 0 {
++        return;
++    }
++
++    let mut status = HashMap::new();
++    status.insert("message", Value::from("Dictation ready"));
++
++    let mut refresh = tokio::time::interval(std::time::Duration::from_secs(30));
++    refresh.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
++    loop {
++        if let Err(e) = proxy.set_status(status.clone()).await {
++            myna_core::info_log!("dbus", "background status refresh failed: {e}");
++        }
++        refresh.tick().await;
++    }
++}
+diff --git a/client/myna-desktop/src/dbus/mod.rs b/client/myna-desktop/src/dbus/mod.rs
+index b96bbc26..802de867 100644
+--- a/client/myna-desktop/src/dbus/mod.rs
++++ b/client/myna-desktop/src/dbus/mod.rs
+@@ -13,2 +13,3 @@
+ pub mod hud_style;
++pub mod background;
+ pub mod pump;
+diff --git a/client/myna-desktop/src/dbus/serve.rs b/client/myna-desktop/src/dbus/serve.rs
+index 0bcb7422..7c5dd3b6 100644
+--- a/client/myna-desktop/src/dbus/serve.rs
++++ b/client/myna-desktop/src/dbus/serve.rs
+@@ -31,2 +31,3 @@ use zbus::Connection;
+ use crate::dbus::{Bus, PropertyValue, BUS_NAME, OBJECT_PATH};
++use crate::dbus::background;
+ use crate::indicator::dbus::wire_state;
+@@ -436,2 +437,6 @@ impl ZbusBus {
+                 myna_core::info_log!("dbus", "acquired {BUS_NAME}");
++                let background_conn = conn.clone();
++                tokio::spawn(async move {
++                    background::announce(&background_conn).await;
++                });
+                 let bus = Self {

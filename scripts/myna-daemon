@@ -1,0 +1,76 @@
+#!/bin/sh
+# myna-daemon (Flatpak): ExecStart for the per-user systemd service.
+#
+# Adaptation of myna-snap/scripts/myna-daemon for Flatpak.
+#
+# Key differences from the snap launcher:
+#
+#   Snap content interface → XDG_RUNTIME_DIR/myna/
+#     In snap, the backend shares its socket directory via snapd's content
+#     interface, bind-mounted into $SNAP_DATA/backend/. In Flatpak we use
+#     $XDG_RUNTIME_DIR/myna/ (finish-args: --filesystem=xdg-run/myna:create),
+#     which both the client and any backend Flatpak declare. The backend
+#     writes a provider.env in a subdirectory (<backend-dir>/<name>/provider.env),
+#     and the client's --backend-dir scans every subdirectory at each press.
+#
+#   Control socket:
+#     Explicitly placed at $XDG_RUNTIME_DIR/myna/myna-desktop.sock so that
+#     external callers (shortcuts, CLI scripts, other containers) can poke
+#     it via myna-toggle.
+#
+#   GSettings backend:
+#     Flatpak sandboxes $XDG_CONFIG_HOME to ~/.var/app/com.canonical.Myna/config.
+#     The keyfile store is kept app-private.
+#
+# Env knobs (all optional):
+#   MYNA_BACKEND_SOCKET  exact backend socket path (bypasses auto-discovery)
+#   MYNA_LANGUAGE        language hint forwarded to the session config
+#
+set -eu
+
+socket_listening() {
+    target="$1"
+    [ -S "$target" ] || return 1
+    python3 -c '
+import socket
+import sys
+
+client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+try:
+    client.connect(sys.argv[1])
+except OSError:
+    sys.exit(1)
+finally:
+    client.close()
+' "$target"
+}
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+    exec /app/bin/myna-desktop --help
+fi
+
+BACKEND_DIR="${XDG_RUNTIME_DIR}/myna"
+mkdir -p "$BACKEND_DIR"
+
+WHISPER_SOCKET="${BACKEND_DIR}/whisper/myna.sock"
+if [ -x /app/bin/myna-whisper-server ]; then
+    if ! socket_listening "$WHISPER_SOCKET"; then
+        rm -f "$WHISPER_SOCKET"
+        echo "myna-daemon: launching bundled Whisper backend..." >&2
+        /app/bin/myna-whisper-server >/dev/null 2>&1 &
+    fi
+fi
+
+CONTROL_SOCKET="${BACKEND_DIR}/myna-desktop.sock"
+
+if [ -n "${MYNA_BACKEND_SOCKET:-}" ]; then
+    set -- --socket "$MYNA_BACKEND_SOCKET" "$@"
+else
+    set -- --backend-dir "$BACKEND_DIR" "$@"
+fi
+
+if [ -n "${MYNA_LANGUAGE:-}" ]; then
+    set -- --language "$MYNA_LANGUAGE" "$@"
+fi
+
+exec /app/bin/myna-desktop --control-socket "$CONTROL_SOCKET" "$@"

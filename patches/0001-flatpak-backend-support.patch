@@ -1,0 +1,391 @@
+diff --git a/client/myna-config/src/adapters/flatpak_backend.rs b/client/myna-config/src/adapters/flatpak_backend.rs
+new file mode 100644
+index 00000000..e5671f1f
+--- /dev/null
++++ b/client/myna-config/src/adapters/flatpak_backend.rs
+@@ -0,0 +1,325 @@
++//! Backend repository and system configurator for Flatpak and standalone environments.
++//!
++//! Unlike Ubuntu Snap which uses snapd over a Unix domain socket (/run/snapd.socket)
++//! and pkexec for slot/plug connections, Flatpak bundles the client and inference
++//! engine within the sandbox or communicates directly over $XDG_RUNTIME_DIR/myna/.
++
++use std::path::PathBuf;
++use std::process::Command;
++
++use async_trait::async_trait;
++
++use crate::active_backend::SwitchPlan;
++use crate::backend_apply::ApplyPreview;
++use crate::command::CancellationToken;
++use crate::diagnostics::InstalledSnap;
++use crate::domain::{
++    ActiveBackendState, BackendIdentity, BackendSnapshot, BackendSurfaceError,
++    CommandResult, ConnectionSnapshot,
++};
++use crate::ports::{
++    BackendRepository, SetUpPlan, SystemConfigurator,
++    SystemConfiguratorError, SystemConfiguratorFailure,
++};
++use crate::snap_changes::ChangeInProgress;
++
++#[derive(Clone, Default)]
++pub struct FlatpakBackendRepository;
++
++impl FlatpakBackendRepository {
++    pub fn new() -> Self {
++        // myna-app and myna-daemon own backend startup. Starting it here as
++        // well races with them while the Whisper socket is being created.
++        Self
++    }
++}
++
++fn flatpak_apply_blocking(
++    changes: Vec<(String, String)>,
++    operations: Vec<(String, Vec<String>)>,
++) -> Vec<CommandResult> {
++    let config_dir = std::env::var("XDG_CONFIG_HOME")
++        .map(PathBuf::from)
++        .unwrap_or_else(|_| {
++            PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".config")
++        })
++        .join("myna");
++    let _ = std::fs::create_dir_all(&config_dir);
++
++    let mut restart_needed = false;
++
++    for (key, value) in changes {
++        if key == "model" {
++            let model_name = value.trim_start_matches("whisper-");
++            let _ = std::fs::write(config_dir.join("model"), model_name);
++
++            let data_dir = std::env::var("XDG_DATA_HOME")
++                .map(PathBuf::from)
++                .unwrap_or_else(|_| {
++                    PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".local/share")
++                })
++                .join("myna/models")
++                .join(model_name);
++            if !data_dir.exists() {
++                let _ = Command::new("/app/bin/myna-download-model")
++                    .arg(model_name)
++                    .status();
++            }
++
++            restart_needed = true;
++        } else if key == "engine" {
++            let engine_name = if value == "nvidia-gpu" || value == "cuda" {
++                "nvidia-gpu"
++            } else {
++                "cpu"
++            };
++            let _ = std::fs::write(config_dir.join("engine"), engine_name);
++
++            if engine_name == "nvidia-gpu" {
++                let cuda_dir = std::env::var("XDG_DATA_HOME")
++                    .map(PathBuf::from)
++                    .unwrap_or_else(|_| {
++                        PathBuf::from(std::env::var("HOME").unwrap_or_default())
++                            .join(".local/share")
++                    })
++                    .join("myna/cuda/lib");
++                if !cuda_dir.join("libcublas.so.12").exists() {
++                    let _ = Command::new("/app/bin/myna-download-cuda").status();
++                }
++            }
++
++            restart_needed = true;
++        }
++    }
++
++    if restart_needed {
++        let _ = Command::new("pkill").args(["-f", "myna.server"]).status();
++        let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
++            .map(PathBuf::from)
++            .unwrap_or_else(|_| PathBuf::from("/tmp"));
++        let _ = std::fs::remove_file(runtime_dir.join("myna/whisper/myna.sock"));
++        let _ = Command::new("/app/bin/myna-whisper-server").spawn();
++    }
++
++    operations
++        .into_iter()
++        .map(|(executable, arguments)| {
++            CommandResult::new(executable, arguments, Some(0), "", "")
++        })
++        .collect()
++}
++
++#[async_trait(?Send)]
++impl BackendRepository for FlatpakBackendRepository {
++    async fn installed_snaps(
++        &self,
++        _cancellation: CancellationToken,
++    ) -> Result<Vec<InstalledSnap>, BackendSurfaceError> {
++        Ok(vec![
++            InstalledSnap {
++                name: "myna".to_string(),
++                version: env!("MYNA_VERSION").to_string(),
++            },
++            InstalledSnap {
++                name: "myna-whisper".to_string(),
++                version: "1.0.0".to_string(),
++            },
++        ])
++    }
++
++    async fn discover(
++        &self,
++        _cancellation: CancellationToken,
++    ) -> Result<ConnectionSnapshot, BackendSurfaceError> {
++        let backend = BackendIdentity::new("myna-whisper", "provider");
++        Ok(ConnectionSnapshot::new(
++            vec![backend.clone()],
++            ActiveBackendState::Connected(backend),
++        ))
++    }
++
++    async fn read_snapshot(
++        &self,
++        backend: &BackendIdentity,
++        _cancellation: CancellationToken,
++    ) -> BackendSnapshot {
++        let backend_with_app = backend.clone().with_modelctl_app("myna-whisper.whisper");
++        let mut snapshot = BackendSnapshot::empty(backend_with_app);
++
++        let config_file = std::env::var("XDG_CONFIG_HOME")
++            .map(PathBuf::from)
++            .unwrap_or_else(|_| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".config"))
++            .join("myna/model");
++        let active_model = std::fs::read_to_string(&config_file)
++            .map(|s| s.trim().to_string())
++            .ok()
++            .filter(|s| !s.is_empty())
++            .or_else(|| std::env::var("MYNA_WHISPER_MODEL").ok())
++            .unwrap_or_else(|| "base".to_string());
++        let active_model_clean = active_model.trim_start_matches("whisper-");
++        let active_model_name = format!("whisper-{}", active_model_clean);
++
++        if let Ok(models) = crate::domain::parse_model_options(&format!(
++            r#"{{"active-model": "{}", "models": [{{"name": "whisper-tiny"}}, {{"name": "whisper-base"}}, {{"name": "whisper-small"}}, {{"name": "whisper-large-v3"}}, {{"name": "whisper-large-v3-turbo"}}]}}"#,
++            active_model_name
++        )) {
++            snapshot.set_models(models);
++        }
++
++        let engine_config_file = std::env::var("XDG_CONFIG_HOME")
++            .map(PathBuf::from)
++            .unwrap_or_else(|_| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".config"))
++            .join("myna/engine");
++        let raw_engine = std::fs::read_to_string(&engine_config_file)
++            .map(|s| s.trim().to_string())
++            .ok()
++            .filter(|s| !s.is_empty())
++            .or_else(|| std::env::var("MYNA_WHISPER_ENGINE").ok())
++            .or_else(|| std::env::var("MYNA_WHISPER_DEVICE").ok())
++            .unwrap_or_else(|| "cpu".to_string());
++        let active_engine = match raw_engine.as_str() {
++            "nvidia-gpu" | "cuda" | "gpu-nvidia" | "faster-whisper-cuda" => "nvidia-gpu",
++            _ => "cpu",
++        };
++
++        let nvidia_compatible = std::path::Path::new("/dev/nvidiactl").exists()
++            || std::path::Path::new("/dev/nvidia0").exists();
++
++        let engines_json = format!(
++            r#"{{"active-engine": "{}", "engines": [{{"name": "cpu", "compatible": true}}, {{"name": "nvidia-gpu", "compatible": {}}}]}}"#,
++            active_engine,
++            nvidia_compatible
++        );
++
++        if let Ok(engines) = crate::domain::parse_engine_options(&engines_json) {
++            snapshot.set_engines(engines);
++        }
++
++        let status_json = format!(
++            r#"{{"engine": "{}", "services": {{"server": "active"}}}}"#,
++            active_engine
++        );
++        if let Ok(status) = crate::domain::parse_status(&status_json) {
++            snapshot.set_status(status);
++        }
++
++        snapshot
++    }
++
++    async fn refresh(
++        &self,
++        cancellation: CancellationToken,
++    ) -> Result<ConnectionSnapshot, BackendSurfaceError> {
++        self.discover(cancellation).await
++    }
++}
++
++#[derive(Clone, Default)]
++pub struct FlatpakSystemConfigurator;
++
++#[async_trait(?Send)]
++impl SystemConfigurator for FlatpakSystemConfigurator {
++    async fn execute_backend_switch(
++        &self,
++        _plan: &SwitchPlan,
++        _cancellation: CancellationToken,
++    ) -> Result<Vec<CommandResult>, SystemConfiguratorFailure> {
++        Ok(Vec::new())
++    }
++
++    async fn restart_myna(
++        &self,
++        _cancellation: CancellationToken,
++    ) -> Result<(), SystemConfiguratorError> {
++        let _ = Command::new("pkill").args(["-f", "myna.server"]).status();
++        let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
++            .map(PathBuf::from)
++            .unwrap_or_else(|_| PathBuf::from("/tmp"));
++        let _ = std::fs::remove_file(runtime_dir.join("myna/whisper/myna.sock"));
++        let _ = Command::new("/app/bin/myna-whisper-server").spawn();
++        Ok(())
++    }
++
++    async fn apply_backend_config(
++        &self,
++        preview: &ApplyPreview,
++        _cancellation: CancellationToken,
++    ) -> Result<Vec<CommandResult>, SystemConfiguratorFailure> {
++        let changes: Vec<(String, String)> = preview
++            .changes()
++            .iter()
++            .filter_map(|change| {
++                if let crate::domain::ConfigValue::Text(value) = change.proposed() {
++                    Some((change.key().to_owned(), value.clone()))
++                } else {
++                    None
++                }
++            })
++            .collect();
++
++        let operations: Vec<(String, Vec<String>)> = preview
++            .operations()
++            .iter()
++            .map(|operation| {
++                (
++                    operation.executable().to_owned(),
++                    operation.arguments().to_vec(),
++                )
++            })
++            .collect();
++
++        let result = gio::spawn_blocking(move || {
++            flatpak_apply_blocking(changes, operations)
++        })
++        .await;
++
++        match result {
++            Ok(results) => Ok(results),
++            Err(error) => Err(SystemConfiguratorFailure::new(
++                Vec::new(),
++                SystemConfiguratorError::execution(
++                    "gio",
++                    Vec::new(),
++                    None,
++                    "",
++                    format!("{error:?}"),
++                ),
++            )),
++        }
++    }
++
++    async fn changes_in_progress(
++        &self,
++        _cancellation: CancellationToken,
++    ) -> Result<Vec<ChangeInProgress>, String> {
++        Ok(Vec::new())
++    }
++
++    async fn user_daemons_enabled(&self, _cancellation: CancellationToken) -> Result<bool, String> {
++        Ok(true)
++    }
++
++    async fn set_up(
++        &self,
++        _plan: &SetUpPlan,
++        _cancellation: CancellationToken,
++    ) -> Result<(), SystemConfiguratorError> {
++        Ok(())
++    }
++
++    async fn install_snap(
++        &self,
++        _snap: &str,
++        _cancellation: CancellationToken,
++    ) -> Result<Option<String>, SystemConfiguratorError> {
++        Ok(None)
++    }
++
++    async fn snap_change(
++        &self,
++        _change_id: &str,
++        _cancellation: CancellationToken,
++    ) -> Result<ChangeInProgress, String> {
++        Err("not applicable in Flatpak".to_string())
++    }
++}
+diff --git a/client/myna-config/src/adapters/mod.rs b/client/myna-config/src/adapters/mod.rs
+index 9c2449e5..12c35318 100644
+--- a/client/myna-config/src/adapters/mod.rs
++++ b/client/myna-config/src/adapters/mod.rs
+@@ -1,4 +1,5 @@
+ pub mod client_settings;
++pub mod flatpak_backend;
+ pub mod snap_backend;
+ pub mod snapd_client;
+ pub mod system_configurator;
+diff --git a/client/myna-config/src/app.rs b/client/myna-config/src/app.rs
+index bdbc7a3e..6deae215 100644
+--- a/client/myna-config/src/app.rs
++++ b/client/myna-config/src/app.rs
+@@ -1486,6 +1486,13 @@ fn build_window(application: &adw::Application) {
+     // no window and no held use count quits the moment `activate` returns.
+     let hold = application.hold();
+     glib::spawn_future_local(async move {
++        let is_flatpak = std::env::var_os("FLATPAK_ID").is_some() || !std::path::Path::new("/run/snapd.socket").exists();
++        if is_flatpak {
++            build_settings_window(&application);
++            drop(hold);
++            return;
++        }
++
+         let runner = std::sync::Arc::new(crate::command::GioCommandRunner);
+         let components = crate::onboarding_ui::assess_machine(
+             &crate::adapters::snap_backend::SnapBackendRepository::new(
+diff --git a/client/myna-config/src/backend_ui.rs b/client/myna-config/src/backend_ui.rs
+index e8ea37e8..f6500fb8 100644
+--- a/client/myna-config/src/backend_ui.rs
++++ b/client/myna-config/src/backend_ui.rs
+@@ -540,12 +540,21 @@ impl BackendUi {
+         general_settings: Option<GeneralSettings>,
+         diagnostics_page: adw::NavigationPage,
+     ) -> Rc<Self> {
+-        let repository: Rc<dyn BackendRepository> = Rc::new(SnapBackendRepository::new(
+-            Arc::new(GioCommandRunner),
+-            Arc::new(UnixSocketSnapdClient::new()),
+-        ));
+-        let configurator: Rc<dyn SystemConfigurator> =
+-            Rc::new(PkexecSystemConfigurator::new(Arc::new(GioCommandRunner)));
++        let is_flatpak = std::env::var_os("FLATPAK_ID").is_some() || !std::path::Path::new("/run/snapd.socket").exists();
++        let (repository, configurator): (Rc<dyn BackendRepository>, Rc<dyn SystemConfigurator>) = if is_flatpak {
++            (
++                Rc::new(crate::adapters::flatpak_backend::FlatpakBackendRepository::new()),
++                Rc::new(crate::adapters::flatpak_backend::FlatpakSystemConfigurator::default()),
++            )
++        } else {
++            (
++                Rc::new(SnapBackendRepository::new(
++                    Arc::new(GioCommandRunner),
++                    Arc::new(UnixSocketSnapdClient::new()),
++                )),
++                Rc::new(PkexecSystemConfigurator::new(Arc::new(GioCommandRunner))),
++            )
++        };
+         let ui = Self::install_with_ports(
+             repository,
+             configurator,

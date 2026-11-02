@@ -1,0 +1,108 @@
+#!/bin/bash
+# whisper-server (Flatpak): launch myna-server with the Whisper adapter.
+#
+# Socket & discovery layout:
+#   $XDG_RUNTIME_DIR/myna/whisper/provider.env
+#   $XDG_RUNTIME_DIR/myna/whisper/myna.sock
+#
+# myna-desktop --backend-dir $XDG_RUNTIME_DIR/myna finds this subdirectory,
+# parses provider.env (SNAP_NAME + UNIX_SOCKET) and connects to myna.sock.
+set -eu
+
+EXTENSIONS_DIR=/app/extensions
+SHARE_DIR="${XDG_RUNTIME_DIR}/myna/whisper"
+SOCKET="${SHARE_DIR}/myna.sock"
+
+mkdir -p "$SHARE_DIR"
+
+# Engine and device selection: cpu (default) or nvidia-gpu (cuda)
+ENGINE_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/myna/engine"
+if [ -f "$ENGINE_CONFIG" ]; then
+    ENGINE="$(cat "$ENGINE_CONFIG" | tr -d '[:space:]')"
+else
+    ENGINE="${MYNA_WHISPER_ENGINE:-${MYNA_WHISPER_DEVICE:-cpu}}"
+fi
+
+if [ "$ENGINE" = "nvidia-gpu" ] || [ "$ENGINE" = "cuda" ]; then
+    DEVICE="cuda"
+    COMPUTE_TYPE="${MYNA_WHISPER_COMPUTE_TYPE:-float16}"
+else
+    DEVICE="cpu"
+    COMPUTE_TYPE="${MYNA_WHISPER_COMPUTE_TYPE:-default}"
+fi
+
+# Model selection: tiny, base, small, large-v3, large-v3-turbo (default: base)
+CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/myna/model"
+if [ -f "$CONFIG_FILE" ]; then
+    MODEL="$(cat "$CONFIG_FILE" | tr -d '[:space:]')"
+else
+    MODEL="${MYNA_WHISPER_MODEL:-base}"
+fi
+
+# Resolve model weights directory.
+# In Flatpak, $XDG_DATA_HOME is ~/.var/app/com.canonical.Myna/data
+USER_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/myna/models/$MODEL"
+EXT_DATA_DIR="$EXTENSIONS_DIR/models/$MODEL"
+
+if [ -d "$USER_DATA_DIR" ]; then
+    MODEL_DIR="$USER_DATA_DIR"
+elif [ -d "$EXT_DATA_DIR" ]; then
+    MODEL_DIR="$EXT_DATA_DIR"
+else
+    echo "myna-whisper: model '$MODEL' weights not found in $USER_DATA_DIR." >&2
+    echo "myna-whisper: attempting to download '$MODEL' automatically..." >&2
+    if /app/bin/myna-download-model "$MODEL"; then
+        MODEL_DIR="$USER_DATA_DIR"
+    else
+        echo "myna-whisper: failed to download model '$MODEL'." >&2
+        exit 1
+    fi
+fi
+
+# Match the upstream Snap engine defaults: CPU keeps the model for 5 idle
+# minutes, NVIDIA keeps it for 10 because loading onto VRAM is slower.
+if [ "$DEVICE" = "cuda" ]; then
+    SLEEP_IDLE_SECONDS=600
+else
+    SLEEP_IDLE_SECONDS=300
+fi
+
+# Set snap identity so myna-server --share-provider writes provider.env beside the socket
+export SNAP_NAME="myna-whisper"
+export SNAP_INSTANCE_NAME="myna-whisper"
+
+CUDA_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/myna/cuda/lib"
+if [ "$DEVICE" = "cuda" ]; then
+    if [ ! -f "$CUDA_DATA_DIR/libcublas.so.12" ]; then
+        echo "myna-whisper: CUDA cuBLAS library not found in $CUDA_DATA_DIR." >&2
+        echo "myna-whisper: downloading CUDA cuBLAS runtime automatically..." >&2
+        if /app/bin/myna-download-cuda; then
+            echo "myna-whisper: CUDA libraries downloaded successfully." >&2
+        else
+            echo "myna-whisper: failed to download CUDA libraries, falling back to CPU." >&2
+            DEVICE="cpu"
+            COMPUTE_TYPE="default"
+        fi
+    fi
+
+    if [ -d "$CUDA_DATA_DIR" ]; then
+        export LD_LIBRARY_PATH="$CUDA_DATA_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    fi
+
+    CUDA_SITE="$EXTENSIONS_DIR/gpu-nvidia/site-packages"
+    if [ -d "$CUDA_SITE" ]; then
+        export PYTHONPATH="$CUDA_SITE${PYTHONPATH:+:$PYTHONPATH}"
+        export LD_LIBRARY_PATH="$CUDA_SITE/nvidia/cu13/lib:$CUDA_SITE/nvidia/cudnn/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    fi
+fi
+
+exec -a myna-server python3 -m myna.server \
+    --adapter whisper \
+    --device "$DEVICE" \
+    --compute-type "$COMPUTE_TYPE" \
+    --model "$MODEL_DIR" \
+    --socket "$SOCKET" \
+    --share-provider \
+    --sleep-idle-seconds "$SLEEP_IDLE_SECONDS" \
+    --idle-action unload \
+    "$@"

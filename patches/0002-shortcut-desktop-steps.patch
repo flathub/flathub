@@ -1,0 +1,92 @@
+diff --git a/client/myna-config/src/shortcut.rs b/client/myna-config/src/shortcut.rs
+index 47e8c60c..ddd874af 100644
+--- a/client/myna-config/src/shortcut.rs
++++ b/client/myna-config/src/shortcut.rs
+@@ -8,7 +8,8 @@ pub const DEFAULT_ACCELERATOR: &str = "<Super>j";
+ 
+ /// What the shortcut runs: the daemon's `Toggle`, with no `snap run` startup
+ /// in the way.
+-pub const TOGGLE_COMMAND: &str = "gdbus call --session --dest com.canonical.Myna.Dictation \
++pub const TOGGLE_COMMAND: &str = "flatpak run io.github.vishnudevk.Myna myna-toggle";
++pub const LEGACY_TOGGLE_COMMAND: &str = "gdbus call --session --dest com.canonical.Myna.Dictation \
+      --object-path /com/canonical/Myna/Dictation --method com.canonical.Myna.Dictation.Toggle";
+ 
+ /// The command for a daemon that publishes `Shortcut`, which only daemons
+@@ -27,13 +28,21 @@ pub fn command(legacy: bool) -> String {
+ /// --toggle`. A desktop that stores no name for a shortcut is searched by it.
+ pub fn is_toggle_command(command: &str) -> bool {
+     let command = command.trim();
+-    if command == TOGGLE_COMMAND {
++    if command == TOGGLE_COMMAND || command == LEGACY_TOGGLE_COMMAND {
+         return true;
+     }
+     let mut words = command.split_whitespace();
+     let (Some(program), arguments) = (words.next(), words.collect::<Vec<_>>()) else {
+         return false;
+     };
++    let flatpak_app = (program == "flatpak" || program.ends_with("/flatpak"))
++        && arguments.contains(&"io.github.vishnudevk.Myna")
++        && (arguments.contains(&"myna-toggle")
++            || arguments.contains(&"--toggle")
++            || arguments.contains(&"--command=myna-toggle"));
++    if flatpak_app {
++        return true;
++    }
+     let snap_app = arguments.is_empty()
+         && program
+             .strip_prefix("/snap/bin/")
+@@ -138,6 +147,9 @@ mod tests {
+     fn only_myna_toggle_commands_are_recognised() {
+         for ours in [
+             TOGGLE_COMMAND,
++            LEGACY_TOGGLE_COMMAND,
++            "flatpak run io.github.vishnudevk.Myna myna-toggle",
++            "flatpak run --command=myna-toggle io.github.vishnudevk.Myna",
+             "/snap/bin/myna.toggle",
+             "/snap/bin/myna_dev.toggle",
+             "/usr/bin/myna-desktop --toggle",
+diff --git a/client/myna-config/src/shortcut_ui.rs b/client/myna-config/src/shortcut_ui.rs
+index 9825d517..49694eec 100644
+--- a/client/myna-config/src/shortcut_ui.rs
++++ b/client/myna-config/src/shortcut_ui.rs
+@@ -674,12 +674,35 @@ pub fn onboarding_description(state: &ShortcutState) -> String {
+     }
+ }
+ 
+-/// Why there is no button, and the command to bind by hand.
++/// Why there is no button, and the step-by-step instructions to bind by hand.
+ fn unsupported_text() -> String {
+-    gettextrs::gettext(
+-        "This desktop cannot set up the shortcut. Bind this command to a key in its settings: {command}",
+-    )
+-    .replace("{command}", crate::shortcut::TOGGLE_COMMAND)
++    let desktop = std::env::var("XDG_CURRENT_DESKTOP")
++        .unwrap_or_default()
++        .to_uppercase();
++    let command = crate::shortcut::TOGGLE_COMMAND;
++
++    if desktop.contains("KDE") || desktop.contains("PLASMA") {
++        format!(
++            "Set up in KDE Plasma:\n\
++             1. System Settings → Shortcuts → Add New → Command\n\
++             2. Command: {command}\n\
++             3. Assign your preferred shortcut (e.g. Meta + J)"
++        )
++    } else if desktop.contains("GNOME") {
++        format!(
++            "Set up in GNOME Settings:\n\
++             1. Settings → Keyboard → Custom Shortcuts (+)\n\
++             2. Command: {command}\n\
++             3. Assign your preferred shortcut (e.g. Super + J)"
++        )
++    } else {
++        format!(
++            "Set up in Keyboard Settings:\n\
++             1. Open desktop Keyboard Shortcuts\n\
++             2. Add custom shortcut with Command: {command}\n\
++             3. Assign your preferred key"
++        )
++    }
+ }
+ 
+ /// The Myna page row's subtitle for `state`; the keys speak for a bound one.

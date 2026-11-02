@@ -1,0 +1,117 @@
+#!/bin/sh
+# myna-app: main Flatpak application launcher.
+# Starts the background Whisper inference engine and Myna dictation daemon,
+# then opens the Myna Settings GUI.
+set -eu
+
+APP_BIN_DIR="${MYNA_APP_BIN_DIR:-/app/bin}"
+
+socket_listening() {
+    target="$1"
+    [ -S "$target" ] || return 1
+    python3 -c '
+import socket
+import sys
+
+client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+try:
+    client.connect(sys.argv[1])
+except OSError:
+    sys.exit(1)
+finally:
+    client.close()
+' "$target"
+}
+
+daemon_running() {
+    gdbus call \
+        --session \
+        --dest org.freedesktop.DBus \
+        --object-path /org/freedesktop/DBus \
+        --method org.freedesktop.DBus.NameHasOwner \
+        com.canonical.Myna.Dictation 2>/dev/null | grep -qx '(true,)'
+}
+
+# If a subcommand or toggle flag was passed, run it immediately without probing sockets
+if [ "${1:-}" = "--toggle" ] || [ "${1:-}" = "myna-toggle" ]; then
+    shift || true
+    exec "$APP_BIN_DIR/myna-toggle" "$@"
+elif [ $# -gt 0 ] && [ -x "$APP_BIN_DIR/$1" ]; then
+    cmd="$APP_BIN_DIR/$1"
+    shift
+    exec "$cmd" "$@"
+fi
+
+BACKEND_DIR="${XDG_RUNTIME_DIR}/myna"
+mkdir -p "$BACKEND_DIR"
+WHISPER_SOCKET="${BACKEND_DIR}/whisper/myna.sock"
+CONTROL_SOCKET="${BACKEND_DIR}/myna-desktop.sock"
+DAEMON_PID=""
+CONFIG_PID=""
+
+shutdown_myna() {
+    trap - TERM INT HUP
+    if [ -n "$CONFIG_PID" ]; then
+        kill "$CONFIG_PID" 2>/dev/null || true
+        wait "$CONFIG_PID" 2>/dev/null || true
+    fi
+    if [ -n "$DAEMON_PID" ]; then
+        pkill -TERM -P "$DAEMON_PID" 2>/dev/null || true
+        kill "$DAEMON_PID" 2>/dev/null || true
+        wait "$DAEMON_PID" 2>/dev/null || true
+    fi
+    exit 0
+}
+trap shutdown_myna TERM INT HUP
+
+# A Unix socket file can outlive the process that created it. Treat an
+# unconnectable Whisper socket as stale so a relaunch starts a fresh backend.
+if [ -S "$WHISPER_SOCKET" ] && ! socket_listening "$WHISPER_SOCKET"; then
+    rm -f "$WHISPER_SOCKET"
+
+    # If an old daemon still owns the bus name but its backend died, replace
+    # it. Otherwise the new launcher would only open Settings and leave the
+    # shortcut pointed at the stale socket.
+    if daemon_running; then
+        pkill -TERM -f '^/app/bin/myna-desktop' 2>/dev/null || true
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            daemon_running || break
+            sleep 0.1
+        done
+        if daemon_running; then
+            pkill -KILL -f '^/app/bin/myna-desktop' 2>/dev/null || true
+            sleep 0.1
+        fi
+        rm -f "$CONTROL_SOCKET"
+    fi
+fi
+
+# The daemon owns backend startup. Starting it here as well races with
+# myna-daemon and can leave two GPU-resident Whisper servers behind.
+if ! daemon_running; then
+    echo "myna-app: starting Myna dictation daemon..." >&2
+    rm -f "$CONTROL_SOCKET"
+    if [ -x "$APP_BIN_DIR/myna-daemon" ]; then
+        "$APP_BIN_DIR/myna-daemon" >> "$BACKEND_DIR/daemon.log" 2>&1 &
+        DAEMON_PID=$!
+    fi
+fi
+
+# Present Myna Settings UI, then retain the Flatpak launcher while the daemon
+# runs. GNOME's Background Apps list is tied to the launcher instance, so
+# replacing this shell with the UI would make Flatpak consider the instance
+# dead when Settings closed.
+CONFIG_STATUS=0
+"$APP_BIN_DIR/myna-config" "$@" &
+CONFIG_PID=$!
+if wait "$CONFIG_PID"; then
+    :
+else
+    CONFIG_STATUS=$?
+fi
+
+if [ -n "$DAEMON_PID" ]; then
+    wait "$DAEMON_PID"
+fi
+
+exit "$CONFIG_STATUS"
