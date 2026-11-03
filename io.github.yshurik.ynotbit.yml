@@ -1,0 +1,95 @@
+app-id: io.github.yshurik.ynotbit
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+command: ynotbit
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --socket=pulseaudio
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+cleanup:
+  - /include
+  - /lib/pkgconfig 
+  - /lib/*.a
+  - /lib/*.la
+  - /bin/sqlcipher
+  - /share/man
+modules:
+  - name: tcl
+    buildsystem: simple
+    subdir: unix
+    build-commands: 
+      - sed -i '/chmod 555/d' Makefile.in
+      - ./configure --prefix=/app
+      - make -j$FLATPAK_BUILDER_N_JOBS
+      - make install
+    cleanup:
+      - '*'
+    sources:
+      - type: archive
+        url: https://prdownloads.sourceforge.net/tcl/tcl8.6.16-src.tar.gz
+        sha256: 91cb8fa61771c63c262efb553059b7c7ad6757afa5857af6265e4b0bdc2a14a5
+          
+  - name: libsodium
+    config-opts:
+      - --disable-shared
+      - --with-pic
+    sources:
+      - type: archive
+        url: https://download.libsodium.org/libsodium/releases/libsodium-1.0.20.tar.gz
+        sha256: ebb65ef6ca439333c2bb41a0c1990587288da07f6c7fd07cb3a18cc18d30ce19
+
+  - name: sqlcipher
+    config-opts:
+      - --disable-shared
+      - --with-pic
+      - --enable-tempstore=yes
+      - CFLAGS=-DSQLITE_HAS_CODEC
+      - LDFLAGS=-lcrypto
+    sources:
+      - type: git
+        url: https://github.com/sqlcipher/sqlcipher.git
+        tag: v4.6.1
+        commit: c5bd336ece77922433aaf6d6fe8cf203b0c299d5
+
+  - name: ynotbit
+    buildsystem: simple
+    build-commands:
+      - >-
+        cmake -S . -B build -G Ninja
+        -DCMAKE_BUILD_TYPE=Release
+        -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+        -DFETCHCONTENT_SOURCE_DIR_SECP256K1=$PWD/deps/secp256k1
+        -DFETCHCONTENT_SOURCE_DIR_MINIUPNPC=$PWD/deps/miniupnpc
+      - cmake --build build --target ynotbit --parallel $FLATPAK_BUILDER_N_JOBS
+      - install -Dm755 build/ynotbit /app/bin/ynotbit
+      - install -Dm644 packaging/flatpak/io.github.yshurik.ynotbit.desktop -t /app/share/applications
+      - install -Dm644 packaging/flatpak/io.github.yshurik.ynotbit.metainfo.xml -t /app/share/metainfo
+      - |
+        for size in 16 20 24 32 40 48 64 96 128 256 512; do
+          install -Dm644 assets/icons/application/$size.png \
+            /app/share/icons/hicolor/${size}x${size}/apps/io.github.yshurik.ynotbit.png
+        done
+      - install -Dm644 assets/ynotbit.svg /app/share/icons/hicolor/scalable/apps/io.github.yshurik.ynotbit.svg
+      - install -Dm644 licenses/* -t /app/share/licenses/io.github.yshurik.ynotbit
+      - install -Dm644 third_party/notbit/COPYING /app/share/licenses/io.github.yshurik.ynotbit/notbit.txt
+      - install -Dm644 LICENSE THIRD_PARTY.md -t /app/share/licenses/io.github.yshurik.ynotbit 
+    sources:
+      - type: git
+        url: https://github.com/yshurik/ynotbit.git
+        tag: v0.8.2
+        commit: 8c688a48d30ad896980a94e79db74212b3de8912
+      - type: archive
+        url: https://github.com/bitcoin-core/secp256k1/archive/refs/tags/v0.6.0.tar.gz
+        sha256: 785bb98e7d6705c51c8dfa8ac3af6aa2ccfa3774714d51c0b9e28fac1146e9f1
+        dest: deps/secp256k1
+      - type: archive
+        url: https://github.com/miniupnp/miniupnp/archive/refs/tags/miniupnpc_2_3_3.tar.gz
+        sha256: 8cf2c833b3e76fc4893ff29c2a376e3394962449e5970e373c0a91421724d222
+        dest: deps/miniupnpc
+
