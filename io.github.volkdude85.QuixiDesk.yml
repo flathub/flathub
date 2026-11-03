@@ -1,0 +1,61 @@
+app-id: io.github.volkdude85.QuixiDesk
+runtime: org.gnome.Platform
+runtime-version: "50"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: quixidesk-flatpak
+finish-args:
+  # A desktop app that draws, plays audio, and talks to its own loopback bridge.
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  # The app works on the user's own files: the persona, the memory folder of markdown, and whatever
+  # workspace they point it at. A sandbox that cannot see those is a demo, not this application.
+  - --filesystem=home
+  # Screenshots and window control go through the desktop portal, not around the sandbox.
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=org.kde.KWin
+  - --talk-name=org.kde.KWin.Scripting
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/quixidesk/cargo
+    CARGO_NET_OFFLINE: "true"
+modules:
+  - name: quixidesk
+    buildsystem: simple
+    build-commands:
+      # The registry travels with the sources (cargo-sources.json); the crate config points cargo at it
+      # because a Flatpak build has no network.
+      - mkdir -p .cargo
+      - cp cargo-config.toml .cargo/config.toml
+      - cargo build --release --offline -p quixi-app
+      - install -Dm755 target/release/QuixiDesk /app/bin/QuixiDesk
+      - install -Dm755 quixidesk-flatpak /app/bin/quixidesk-flatpak
+      - install -Dm644 io.github.volkdude85.QuixiDesk.desktop /app/share/applications/io.github.volkdude85.QuixiDesk.desktop
+      - install -Dm644 io.github.volkdude85.QuixiDesk.metainfo.xml /app/share/metainfo/io.github.volkdude85.QuixiDesk.metainfo.xml
+      # appstream refuses a component whose icon it cannot find, so the mark is installed under the
+      # name the metainfo advertises.
+      - install -Dm644 resources/quixi-mark.svg /app/share/icons/hicolor/scalable/apps/io.github.volkdude85.QuixiDesk.svg
+      - mkdir -p /app/share/quixidesk && cp -a resources /app/share/quixidesk/resources
+    sources:
+      # The application tree: upstream v3.6556.12 plus the Linux series, published as one tarball so a
+      # builder needs one URL and one checksum rather than ninety-seven patches.
+      - type: archive
+        url: https://github.com/volkdude85/QuixiDesk/releases/download/v3.6556.12-linux/quixidesk-linux-3.6556.12.tar.gz
+        sha256: fefdbbc7cf9ff761aab17304da68961602cf4be2a9f23df8c95fa43879cfc00f
+      # A source list, not a file: flatpak-builder expands it into 564 crate archives and unpacks them
+      # under cargo/vendor, which is what cargo-config.toml points at.
+      - cargo-sources.json
+      - type: file
+        path: cargo-config.toml
+      - type: file
+        path: quixidesk-flatpak
+      - type: file
+        path: io.github.volkdude85.QuixiDesk.desktop
+      - type: file
+        path: io.github.volkdude85.QuixiDesk.metainfo.xml
