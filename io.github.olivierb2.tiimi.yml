@@ -1,0 +1,84 @@
+app-id: io.github.olivierb2.tiimi
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: tiimi
+appstream-compose: true
+
+add-extensions:
+  io.github.olivierb2.tiimi.Debug:
+    directory: lib/debug
+    autodelete: true
+    no-autodownload: true
+
+cleanup:
+  - '*.la'
+  - '*.a'
+  - /include
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/tiimi/cargo
+    CARGO_NET_OFFLINE: 'true'
+    CEF_PATH: /app/lib/cef
+    CARGO_BUILD_JOBS: '6'
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=all
+  - --filesystem=xdg-download
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --env=LD_LIBRARY_PATH=/app/lib/cef
+  - --env=GSK_RENDERER=gl
+
+modules:
+  - name: cef-binaries
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/cef
+      - cp -a include libcef_dll cmake CMakeLists.txt /app/lib/cef/
+      - cp -a Release/. /app/lib/cef/
+      - cp -a Resources/. /app/lib/cef/
+      - chmod +x /app/lib/cef/chrome-sandbox || true
+      - install -Dm644 archive.json /app/lib/cef/archive.json
+    sources:
+      - type: archive
+        only-arches: [x86_64]
+        url: https://github.com/olivierb2/tiimi/releases/download/cef-152.0.6-proprietary-codecs/cef_binary_152.0.6%2Bg708dc14%2Bchromium-152.0.7977.83_linux64_minimal.zip
+        sha256: 3d64f6fac8911a368ffa415e3ee53d002cbd792866f08ed6578dae1e252cbac8
+      - type: archive
+        only-arches: [aarch64]
+        url: https://github.com/olivierb2/tiimi/releases/download/cef-152.0.6-proprietary-codecs/cef_binary_152.0.6%2Bg708dc14%2Bchromium-152.0.7977.83_linuxarm64_minimal.zip
+        sha256: fcf2ca3fd37dbd89f8a1dc58cec2f374164eb9a7e76baa96409013368dcaa42a
+      - type: inline
+        only-arches: [x86_64]
+        contents: |
+          {"type":"minimal","name":"cef_binary_152.0.6+g708dc14+chromium-152.0.7977.83_linux64_minimal.tar.bz2","sha1":"0000000000000000000000000000000000000000"}
+        dest-filename: archive.json
+      - type: inline
+        only-arches: [aarch64]
+        contents: |
+          {"type":"minimal","name":"cef_binary_152.0.6+g708dc14+chromium-152.0.7977.83_linuxarm64_minimal.tar.bz2","sha1":"0000000000000000000000000000000000000000"}
+        dest-filename: archive.json
+
+  - name: tiimi
+    buildsystem: meson
+    config-opts:
+      - -Dprofile=default
+    sources:
+      - type: git
+        url: https://github.com/olivierb2/tiimi
+        tag: v0.1.0
+        commit: c3de25e05b618461754a5ac1331d63d5d3fff98d
+      - cargo-sources.json
+    post-install:
+      - mkdir -p ${FLATPAK_DEST}/share/tiimi
+      - mv ${FLATPAK_DEST}/share/locale ${FLATPAK_DEST}/share/tiimi/locale
