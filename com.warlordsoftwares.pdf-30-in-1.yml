@@ -1,0 +1,118 @@
+app-id: com.warlordsoftwares.pdf-30-in-1
+runtime: org.kde.Platform
+runtime-version: "5.15-25.08"
+sdk: org.kde.Sdk
+base: com.riverbankcomputing.PyQt.BaseApp
+base-version: "5.15-25.08"
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk21
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+
+command: pdf30in1
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --filesystem=home
+  - --env=APP_PLATFORM=FLATPAK
+  - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
+  - --env=TESSDATA_PREFIX=/app/share/tessdata
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/man
+  - /share/doc
+  - "*.la"
+  - "*.a"
+
+modules:
+  - python3-req.json
+
+  - name: leptonica
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DBUILD_SHARED_LIBS=ON
+      - -DSW_BUILD=OFF
+      - -DBUILD_PROG=OFF
+    sources:
+      - type: git
+        url: https://github.com/DanBloomberg/leptonica.git
+        tag: 1.87.0
+        commit: 13275a278eb55b5746e33f95fbf5a2c8f604b3ab
+
+  - name: tesseract
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_TRAINING_TOOLS=OFF
+      - -DGRAPHICS_DISABLED=ON
+      - -DDISABLE_CURL=ON
+      - -DDISABLE_ARCHIVE=ON
+      - -DOPENMP_BUILD=OFF
+      - -DBUILD_TESTS=OFF
+    sources:
+      - type: git
+        url: https://github.com/tesseract-ocr/tesseract.git
+        tag: 5.5.3
+        commit: db0ec62f81b0737fbbe184d8fea40af5738f8eef
+
+  - name: tessdata
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 -t ${FLATPAK_DEST}/share/tessdata eng.traineddata osd.traineddata
+    sources:
+      - type: file
+        url: https://github.com/tesseract-ocr/tessdata_fast/raw/4.1.0/eng.traineddata
+        sha256: 7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2
+      - type: file
+        url: https://github.com/tesseract-ocr/tessdata_fast/raw/4.1.0/osd.traineddata
+        sha256: 9cf5d576fcc47564f11265841e5ca839001e7e6f38ff7f7aacf46d15a96b00ff
+
+  - name: ghostscript
+    buildsystem: autotools
+    config-opts:
+      - --disable-cups
+      - --disable-gtk
+      - --without-x
+      - --without-tesseract
+    cleanup:
+      - /share/ghostscript/*/doc
+      - /share/ghostscript/*/examples
+    sources:
+      - type: archive
+        url: https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/gs10080/ghostscript-10.08.0.tar.xz
+        sha256: c20492bc8ebb96c87fa2e52a0926e1cda8cde95d66145e018ac713fed5da38cf
+
+  - libreoffice.json
+
+  - name: pdf-30-in-1
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 pdf30in1 ${FLATPAK_DEST}/bin/pdf30in1
+      - install -Dm644 flatpak/share/icons/icon.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+      - install -Dm644 flatpak/share/applications/${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-icon=${FLATPAK_ID} --set-key=Exec --set-value="pdf30in1 %F" ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 flatpak/share/metainfo/${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - rm -r pdf30in1 flatpak
+      - mkdir -p ${FLATPAK_DEST}/share/pdf30in1
+      - cp -r * ${FLATPAK_DEST}/share/pdf30in1
+      - python3 -m compileall -q ${FLATPAK_DEST}/share/pdf30in1
+    sources:
+      - type: archive
+        url: https://warlordsoftwares.com/static/app_builds/flatpak/FLATPAK_PDF-30-IN-1.tar.gz
+        sha256: 24341a43b893b4d81536ea6f62e9c30589482d01739d651bb801a0f1010b85f2
+      - type: script
+        dest-filename: pdf30in1
+        commands:
+          - exec python3 /app/share/pdf30in1/pdf30in1.py "$@"
