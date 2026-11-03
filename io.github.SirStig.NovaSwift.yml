@@ -1,0 +1,84 @@
+# Flathub manifest for NOVA Swift.
+#
+# Builds the Godot frontend and the Swift GDExtension from this repository.
+# No EV Nova data is downloaded or shipped. x86_64 only: the Linux export preset
+# and the Swift bridge are built for that architecture (Steam Deck included).
+#
+# The git commit below must be the revision that contains packaging/flatpak.
+# scripts/build-flatpak.sh does not use it; it builds the working tree so a
+# local test works before that revision is pushed.
+app-id: io.github.SirStig.NovaSwift
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: novaswift
+separate-locales: false
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  # Godot reads gamepads from /dev/input. Flatpak has no narrower device flag.
+  - --device=all
+  - --share=network
+  # The data wizard scans the home directory and removable drives for the
+  # player's own EV Nova install, then copies it into $XDG_DATA_HOME (per-app,
+  # writable even when home is read-only).
+  - --filesystem=home:ro
+  - --filesystem=/run/media:ro
+  - --filesystem=/media:ro
+  - --filesystem=/mnt:ro
+modules:
+  # Swift 6.3.3's Ubuntu toolchain and libFoundationXML.so need libxml2.so.2.
+  # The 26.08 runtime only ships libxml2.so.16. 2.13 is the last series with
+  # the old soname, built here so the compiler and the app can both load it.
+  - name: libxml2
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+      - --without-python
+      - --without-icu
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libxml2/2.13/libxml2-2.13.8.tar.xz
+        sha256: 277294cb33119ab71b2bc81f2f445e9bc9435b893ad15bb2cd2b0e859a0ee84a
+  - name: novaswift
+    buildsystem: simple
+    only-arches:
+      - x86_64
+    build-options:
+      no-debuginfo: true
+      build-args:
+        # Package.resolved pins the revisions; the sources are not vendored.
+        - --share=network
+      env:
+        SWIFT_DISABLE_AUTOMATIC_RESOLUTION: "1"
+        NOVA_SKIP_GLIBC_CEILING: "1"
+        FFMPEG_CC: gcc
+    build-commands:
+      - packaging/flatpak/build.sh
+    sources:
+      # APP_SOURCE_BEGIN
+      - type: git
+        url: https://github.com/SirStig/NovaSwift.git
+        commit: 8d24392c53ee66472e812162a0994f061a063115
+      # APP_SOURCE_END
+      - type: archive
+        url: https://download.swift.org/swift-6.3.3-release/ubuntu2204/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu22.04.tar.gz
+        sha256: 2c3ad7ad74ab7249d42f172ee3b40bc8a729893010b4a3384ba26f3c61e35008
+        dest: .flatpak-deps/swift
+      - type: archive
+        url: https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip
+        sha256: cadd3204e728a35d3f13adb7fd0d7902636b79f6b95c40c265eb73b6c35329e4
+        dest: .flatpak-deps/godot
+      - type: file
+        url: https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz
+        sha256: f298490b8d44d934be425a5a65a51bf15f422428b229a06a6e11d9ffea248011
+        dest: .flatpak-deps
+        dest-filename: export_templates.tpz
+      - type: file
+        url: https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz
+        sha256: 733984395e0dbbe5c046abda2dc49a5544e7e0e1e2366bba849222ae9e3a03b1
+        dest: .ffmpeg-build
+        dest-filename: ffmpeg-7.1.1.tar.xz
