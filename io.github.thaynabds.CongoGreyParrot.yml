@@ -1,0 +1,69 @@
+id: io.github.thaynabds.CongoGreyParrot
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: '6.11'
+command: congo-grey-parrot
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Toca o áudio gerado e a mídia aberta na tela de legendas.
+  - --socket=pulseaudio
+  # Baixa modelos Whisper e vozes Piper, só quando a pessoa pede.
+  - --share=network
+  # Áudio, vídeo e documentos costumam estar nestas pastas. Arrastar um arquivo
+  # do gerenciador de arquivos para a janela precisa do caminho real.
+  - --filesystem=xdg-music
+  - --filesystem=xdg-videos
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - '*.a'
+modules:
+  - name: espeak-ng
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_TESTING=OFF
+      # O CMake do espeak-ng baixaria o sonic durante a compilação. Aqui ele vem como fonte fixa.
+      - -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+      - -DFETCHCONTENT_SOURCE_DIR_SONIC-GIT=/run/build/espeak-ng/sonic
+    sources:
+      - type: archive
+        url: https://github.com/espeak-ng/espeak-ng/archive/refs/tags/1.52.0.tar.gz
+        sha256: bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23
+        x-checker-data:
+          type: anitya
+          project-id: 6493
+          url-template: https://github.com/espeak-ng/espeak-ng/archive/refs/tags/$version.tar.gz
+      - type: git
+        url: https://github.com/waywardgeek/sonic.git
+        commit: fbf75c3d6d846bad3bb3d456cbc5d07d9fd8c104
+        dest: sonic
+
+  - python3-deps.json
+
+  - name: congo-grey-parrot
+    buildsystem: simple
+    subdir: congo-grey-parrot-desktop
+    build-commands:
+      - pip3 install --verbose --no-index --no-deps --no-build-isolation --prefix=${FLATPAK_DEST} .
+      - install -Dm644 flatpak/${FLATPAK_ID}.desktop -t ${FLATPAK_DEST}/share/applications
+      - install -Dm644 flatpak/${FLATPAK_ID}.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo
+      - |
+        for size in 128 256 512; do
+          install -Dm644 flatpak/icons/${size}.png ${FLATPAK_DEST}/share/icons/hicolor/${size}x${size}/apps/${FLATPAK_ID}.png
+        done
+    sources:
+      - type: git
+        url: https://github.com/thaynabds/CongoGreyParrot.git
+        tag: desktop-v0.2.0
+        commit: 41d765f8f5b1fd04715acdb4dec5501c7bc66601
