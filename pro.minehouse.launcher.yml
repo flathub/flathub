@@ -1,0 +1,52 @@
+# Flatpak build of the launcher, the same file goes to github.com/flathub/pro.minehouse.launcher.
+# It repackages the .deb from the GitHub release (Tauri's recommended way),
+# x-checker-data lets Flathub's bot open a PR for every new release.
+# Source: https://github.com/P5ina/minehouse-launcher/tree/main/flatpak
+id: pro.minehouse.launcher
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: minehouse-launcher
+finish-args:
+  - --share=ipc
+  - --share=network
+  # The launcher window is WebKitGTK (Wayland or X11), Minecraft itself
+  # (LWJGL/GLFW) needs X11, so XWayland is required even on Wayland.
+  - --socket=wayland
+  - --socket=x11
+  - --device=dri
+  # Game sound and the proximity voice chat microphone.
+  - --socket=pulseaudio
+  # The Microsoft refresh token lives in the Secret Service keyring.
+  - --talk-name=org.freedesktop.secrets
+  # Picking own mod .jar files in the file dialog.
+  - --filesystem=xdg-download:ro
+modules:
+  - name: minehouse-launcher
+    buildsystem: simple
+    sources:
+      - type: file
+        dest-filename: minehouse-launcher.deb
+        url: https://github.com/P5ina/minehouse-launcher/releases/download/v0.3.1/MineHouse_0.3.1_amd64.deb
+        sha256: 366b55f7a1fc4db3a9c86693e0715f7382fe5c79ac1cfc65528ab839091999d2
+        only-arches: [x86_64]
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/P5ina/minehouse-launcher/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: '"https://github.com/P5ina/minehouse-launcher/releases/download/v" + $version + "/MineHouse_" + $version + "_amd64.deb"'
+    build-commands:
+      - ar -x minehouse-launcher.deb
+      - tar -xf data.tar.gz
+      - install -Dm755 usr/bin/minehouse-launcher -t /app/bin
+      - install -Dm644 usr/share/metainfo/${FLATPAK_ID}.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 usr/share/applications/MineHouse.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-icon=${FLATPAK_ID} --set-key=StartupWMClass --set-value=minehouse-launcher
+        /app/share/applications/${FLATPAK_ID}.desktop
+      - |
+        for size in 32x32 128x128 256x256@2; do
+          src=usr/share/icons/hicolor/$size/apps/minehouse-launcher.png
+          [ -f "$src" ] || continue
+          dir=${size%@2}
+          install -Dm644 "$src" /app/share/icons/hicolor/$dir/apps/${FLATPAK_ID}.png
+        done
