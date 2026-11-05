@@ -1,6 +1,6 @@
-# SDK Extension for LLVM Project 22
+# SDK Extension for LLVM Project 23
 
-This extension contains various components of the [LLVM Project](https://llvm.org) (version 22.x).
+This extension contains various components of the [LLVM Project](https://llvm.org) (version 23.x).
 
 Among provided tools there are LLVM Core libraries, Clang, Clang Extra Tools, LLDB and LLD.
 
@@ -11,11 +11,11 @@ Among provided tools there are LLVM Core libraries, Clang, Clang Extra Tools, LL
 In order to build your app with tools provided with this extension you have to set following variables in app manifest:
 
 ```
-"sdk-extensions" : [ "org.freedesktop.Sdk.Extension.llvm22" ],
+"sdk-extensions" : [ "org.freedesktop.Sdk.Extension.llvm23" ],
 ...
 "build-options":{
-    "append-path": "/usr/lib/sdk/llvm22/bin",
-    "prepend-ld-library-path": "/usr/lib/sdk/llvm22/lib"
+    "append-path": "/usr/lib/sdk/llvm23/bin",
+    "prepend-ld-library-path": "/usr/lib/sdk/llvm23/lib"
     }
 ```
 Example:
@@ -23,15 +23,15 @@ Example:
 {
   "id" : "org.example.MyApp",
   "runtime" : "org.freedesktop.Platform",
-  "runtime-version" : "25.08",
+  "runtime-version" : "26.08",
   "sdk" : "org.freedesktop.Sdk",
-  "sdk-extensions" : [ "org.freedesktop.Sdk.Extension.llvm22" ],
+  "sdk-extensions" : [ "org.freedesktop.Sdk.Extension.llvm23" ],
   "modules" : [
   {
     "name" : "Myapp",
     "build-options":{
-    "append-path": "/usr/lib/sdk/llvm22/bin",
-    "prepend-ld-library-path": "/usr/lib/sdk/llvm22/lib"
+    "append-path": "/usr/lib/sdk/llvm23/bin",
+    "prepend-ld-library-path": "/usr/lib/sdk/llvm23/lib"
   }
  ]
 }
@@ -43,12 +43,12 @@ It's possible that your app will additionally need some special variable(s) besi
 
 If your app dynamically links to any shared library provided by this extension then you need to copy that library in `/app/lib` directory during the build, i.e:
 ```
-cp /usr/lib/sdk/llvm22/lib/libLLVM-22.so /app/lib/
+cp /usr/lib/sdk/llvm23/lib/libLLVM-23.so /app/lib/
 ```
 
 ### Debugging/Development
 
 In order to use this extension in flatpak SDK environment you may add all provided tools in your PATH by executing first:
 ```
-source /usr/lib/sdk/llvm22/enable.sh
+source /usr/lib/sdk/llvm23/enable.sh
 ```
