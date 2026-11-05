@@ -1,0 +1,137 @@
+app-id: ch.threema.threema-work-desktop
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '26.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node24
+command: run.sh
+separate-locales: false
+finish-args:
+  # Share IPC namespace with the host (improves X11 performance).
+  - --share=ipc
+  # Show window using Wayland or X11.
+  - --socket=wayland
+  - --socket=fallback-x11
+  # Access sound devices using pulseaudio.
+  - --socket=pulseaudio
+  # Allow access to network.
+  - --share=network
+  # Webcam access for video calls (portal doesn't yet seem to be supported)
+  # https://github.com/electron/electron/issues/42608.
+  - --device=all
+  # Allow desktop notifications.
+  - --talk-name=org.freedesktop.Notifications
+  # Allow writing to system secrets storage.
+  - --talk-name=org.freedesktop.secrets
+  # Since this is electron, we also need access to the actual keystore DBuses.
+  - --talk-name=org.kde.kwalletd5
+  - --talk-name=org.kde.kwalletd6
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node24/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+    CARGO_HOME: /run/build/threema-desktop/cargo
+modules:
+  # Because the flatpak runtime's libsecret is built with gcrypt (breaking Electron's keyring
+  # detection in the sandbox), we build libsecret explicitly without gcrypt backend, so that it uses
+  # the DBus backend (same as how it would work outside the sandbox).
+  - name: libsecret
+    buildsystem: meson
+    # See: https://gitlab.gnome.org/GNOME/libsecret/-/blob/30d98bc4fe644eb4839de14e43fe2cd1c3de3a5c/meson_options.txt.
+    config-opts:
+      - -Dmanpage=false
+      # Disable libsecret's optional crypto backend to avoid pulling in libgcrypt/gnutls, as we only
+      # need the Secret Service API (see:
+      # https://specifications.freedesktop.org/secret-service-spec/latest/description.html).
+      - -Dcrypto=disabled
+      # Vala bindings not needed.
+      - -Dvapi=false
+      - -Dgtk_doc=false
+      # GObject introspection not needed.
+      - -Dintrospection=false
+      # No need to generate bash completions in the sandbox.
+      - -Dbash_completion=disabled
+    # Remove some unnecessary files after build.
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /share/man
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libsecret/0.21/libsecret-0.21.7.tar.xz
+        sha256: 6b452e4750590a2b5617adc40026f28d2f4903de15f1250e1d1c40bfd68ed55e
+
+  - name: threema-desktop
+    buildsystem: simple
+    build-options:
+      prepend-path: /run/build/threema-desktop/rust/bin:/run/build/threema-desktop/pnpm/bin:/run/build/threema-desktop/wasm-bindgen:/run/build/threema-desktop/wasm-binaryen/bin:/run/build/threema-desktop/protoc/bin
+      env:
+        XDG_CACHE_HOME: /run/build/threema-desktop/flatpak-node/cache
+        CARGO_HOME: /run/build/threema-desktop/cargo
+        CARGO_NET_OFFLINE: 'true'
+        npm_config_cache: /run/build/threema-desktop/flatpak-node/npm-cache
+        # Path to the cached Electron headers. See `generated-pnpm-sources.json` and look for the
+        # `dest` directory of the
+        # https://www.electronjs.org/headers/v{VERSION}/node-v{VERSION}-headers.tar.gz source.
+        npm_config_nodedir: /run/build/threema-desktop/flatpak-node/cache/node-gyp/42.11.16
+        pnpm_config_offline: 'true'
+        # The release age is being verified when the lockfile is updated.
+        pnpm_config_minimum_release_age: '0'
+        SKIP_LAUNCHER_BINARY: 'true'
+        TURBO_TELEMETRY_DISABLED: '1'
+      secret-env: ['SENTRY_DSN', 'MINIDUMP_ENDPOINT']
+    build-commands:
+      # Build launcher binary.
+      - cd apps/desktop/src/rust/launcher/ && cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cd apps/desktop/src/rust/launcher/ && THREEMA_BUILD_FLAVOR='work-live' cargo --offline build --release --features allow_path_override
+      # The Node.js version of the SDK extension does not exactly match the version pinned in
+      # `engines.node`, so the strict engine check has to be disabled.
+      - "sed -i 's/^engineStrict: true$/engineStrict: false/' pnpm-workspace.yaml"
+      # Install Node dependencies from the pnpm store populated by `generated-pnpm-sources.json`.
+      - pnpm install --offline --frozen-lockfile
+      # Let `electron-rebuild` find the cached Electron headers. See:
+      # https://github.com/flatpak/flatpak-builder-tools/pull/260#discussion_r822084602
+      - ln -s $XDG_CACHE_HOME/node-gyp $HOME/.electron-gyp
+      # Build Threema Desktop. Use the loose env mode, so that turbo passes the build environment
+      # (e.g. `CARGO_HOME`, `npm_config_*`) through to all tasks.
+      - pnpm run dist:desktop:work-live --env-mode=loose
+      # Copy built app to `/app/main`.
+      - mkdir -p /app/main
+      - cp -a build/apps/desktop/packaged/*-linux-*/. /app/main/
+      # Install launcher binary.
+      - install -Dm755 apps/desktop/src/rust/launcher/target/release/ThreemaDesktopLauncher /app/main/ThreemaDesktopLauncher
+      # Install app wrapper.
+      - install -Dm755 run.sh /app/bin/
+      # Install metadata.
+      - install -Dm644 apps/desktop/packaging/metadata/ch.threema.threema-desktop.metainfo.xml /app/share/metainfo/ch.threema.threema-work-desktop.metainfo.xml
+      - install -Dm644 apps/desktop/packaging/metadata/ch.threema.threema-desktop.desktop /app/share/applications/ch.threema.threema-work-desktop.desktop
+      - sed -i 's/ch.threema.threema-desktop/ch.threema.threema-work-desktop/g' /app/share/metainfo/ch.threema.threema-work-desktop.metainfo.xml
+      - sed -i 's/ch.threema.threema-desktop/ch.threema.threema-work-desktop/g' /app/share/applications/ch.threema.threema-work-desktop.desktop
+      - sed -i "s#name>Threema<#name>Threema Beta<#" /app/share/metainfo/ch.threema.threema-work-desktop.metainfo.xml
+      - sed -i "s#Name=Threema#Name=Threema Beta#" /app/share/applications/ch.threema.threema-work-desktop.desktop
+      - sed -i "s#StartupWMClass=Threema#StartupWMClass=Threema Beta#" /app/share/applications/ch.threema.threema-work-desktop.desktop
+      # Install Icons.
+      - mkdir -p /app/share/icons/hicolor/{512x512,scalable}/apps/
+      - install -Dm644 apps/desktop/packaging/assets/icons/flatpak/work-live.svg /app/share/icons/hicolor/scalable/apps/ch.threema.threema-work-desktop.svg
+      - install -Dm644 apps/desktop/packaging/assets/icons/flatpak/work-live.png /app/share/icons/hicolor/512x512/apps/ch.threema.threema-work-desktop.png
+    sources:
+      # Project source code.
+      - type: git
+        url: "https://github.com/threema-ch/threema-desktop"
+        commit: "4210d19112851c9afbce95febdf190fe4242ddd0"
+        tag: "v2.0-beta67-flathub"
+      # Node dependencies, updated with `flatpak_node_generator`.
+      - generated-pnpm-sources.json
+      # Rust dependencies for the launcher and libthreema, updated with `flatpak-cargo-generator`.
+      - generated-cargo-sources.json
+      - generated-libthreema-cargo-sources.json
+      # Build tools, updated with `generate-tool-sources.py`.
+      - generated-tool-sources.json
+      # Wrapper to launch the app.
+      - type: file
+        path: run-wrapper.sh
+        dest-filename: run.sh
