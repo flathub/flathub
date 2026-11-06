@@ -1,0 +1,91 @@
+# Flatpak manifest for Flathub.
+# Build locally:
+#   flatpak install flathub org.gnome.Sdk//49 org.gnome.Platform//49
+#   flatpak-builder --user --install --force-clean build-dir packaging/flatpak/io.github.nandoargenzio.TntPdf.yml
+#   flatpak run io.github.nandoargenzio.TntPdf
+# The GNOME runtime already provides GTK 4, libadwaita, PyGObject and pycairo.
+id: io.github.nandoargenzio.TntPdf
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: tntpdf
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Open/save documents anywhere the user chooses and next to the originals
+  # (split/convert tools write several files into folders).
+  - --filesystem=home
+  - --filesystem=xdg-run/gvfs
+  - --filesystem=/media
+  - --filesystem=/run/media
+  # Printing through CUPS
+  - --socket=cups
+  - --talk-name=org.freedesktop.portal.*
+  # Optional: use the host's OnlyOffice / LibreOffice converters when installed
+  # (the built-in converter is used otherwise)
+  - --talk-name=org.freedesktop.Flatpak
+  - --env=TESSDATA_PREFIX=/app/share/tessdata
+
+modules:
+  - name: pymupdf
+    buildsystem: simple
+    build-commands:
+      # --no-deps: PyMuPDF >= 2 lists optional AI/layout extras (onnxruntime, networkx...)
+      # as dependencies; TntPdf only needs the MuPDF bindings themselves.
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
+        --prefix=${FLATPAK_DEST} pymupdf --no-deps --no-build-isolation
+    sources:
+      - type: file
+        only-arches: [x86_64]
+        url: https://files.pythonhosted.org/packages/f4/dc/e244c162ab621a45bfe36e33fe432264ef7e40592f739474864df66a2dd8/pymupdf-2.1-cp311-abi3-manylinux_2_28_x86_64.whl
+        sha256: a9efa2e9e5f469d3b5749199329739cfef1ff1d1846538ced4885c544eecbcd9
+      - type: file
+        only-arches: [aarch64]
+        url: https://files.pythonhosted.org/packages/10/f9/bf895749cbe37a881f4e3d6eb29b6112bedf366829f3709c94c1e3b6ac22/pymupdf-2.1-cp311-abi3-manylinux_2_28_aarch64.whl
+        sha256: 5a1a1fee36d5598013614e06eef25aaa68819d828f5401170dbcaf6f2714d1dd
+
+  # PDF <-> Word/Excel/PowerPoint conversions (pdf2docx, python-docx, openpyxl, python-pptx...)
+  - python3-office-deps.json
+
+  # OCR language data (the OCR engine itself is built into MuPDF).
+  - name: tessdata
+    buildsystem: simple
+    build-commands:
+      - mkdir -p ${FLATPAK_DEST}/share/tessdata
+      - for d in *.deb; do ar x "$d" data.tar.zst && tar --zstd -xf data.tar.zst && rm data.tar.zst; done
+      - install -Dm644 usr/share/tesseract-ocr/5/tessdata/*.traineddata -t ${FLATPAK_DEST}/share/tessdata/
+    sources:
+      - type: file
+        url: http://archive.ubuntu.com/ubuntu/pool/universe/t/tesseract-lang/tesseract-ocr-eng_4.1.0-2build1_all.deb
+        sha256: cfd4055be0740a651c80b82dcddee67d4635510a092a2a4dc86eff54589a557e
+      - type: file
+        url: http://archive.ubuntu.com/ubuntu/pool/universe/t/tesseract-lang/tesseract-ocr-ita_4.1.0-2build1_all.deb
+        sha256: 93f33555b39d12c3038edfd88b711de50ea95f20cb138f58ff6f4df4ab4db029
+      - type: file
+        url: http://archive.ubuntu.com/ubuntu/pool/universe/t/tesseract-lang/tesseract-ocr-osd_4.1.0-2build1_all.deb
+        sha256: 15d2416753d33a247c87a31f91406c2606c00dd378ef69327971a4aaa75bff76
+      - type: file
+        url: http://archive.ubuntu.com/ubuntu/pool/universe/t/tesseract-lang/tesseract-ocr-fra_4.1.0-2build1_all.deb
+        sha256: 44f2ffa19207fbaa87531e56f4bbe3a7a4e2510eb77dac7e79767df552307edf
+      - type: file
+        url: http://archive.ubuntu.com/ubuntu/pool/universe/t/tesseract-lang/tesseract-ocr-deu_4.1.0-2build1_all.deb
+        sha256: 9fefa09dfe8fdde390a17259b9df3e2fe1fd6294d1ccad9f25a06371f3fc4501
+      - type: file
+        url: http://archive.ubuntu.com/ubuntu/pool/universe/t/tesseract-lang/tesseract-ocr-spa_4.1.0-2build1_all.deb
+        sha256: 5566ce213ddc68a30a49956507c148825998020a5aa8f7818bcb524f922e870d
+
+  - name: tntpdf
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-deps --no-build-isolation --prefix=${FLATPAK_DEST} .
+      - install -Dm644 data/io.github.nandoargenzio.TntPdf.desktop -t ${FLATPAK_DEST}/share/applications/
+      - install -Dm644 data/io.github.nandoargenzio.TntPdf.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo/
+      - install -Dm644 data/icons/io.github.nandoargenzio.TntPdf.svg -t ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/
+    sources:
+      - type: git
+        url: https://github.com/nandoargenzio/tntpdf.git
+        tag: v1.0.0
+        commit: ca4cf4ee2b3b2225065abc3c30615b006f4ee8c9
