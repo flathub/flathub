@@ -1,0 +1,121 @@
+id: com.epicgames.launcher
+
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: EpicGamesLauncher
+
+add-extensions:
+  org.freedesktop.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: '26.08'
+
+  org.freedesktop.Platform.GL32:
+    directory: lib/i386-linux-gnu/GL
+    version: '1.4'
+    versions: 25.08;1.4
+    subdirectories: true
+    no-autodownload: true
+    autodelete: false
+    add-ld-path: lib
+    merge-dirs: vulkan/icd.d;glvnd/egl_vendor.d;OpenCL/vendors;lib/dri;lib/d3d;vulkan/explicit_layer.d;vulkan/implicit_layer.d
+    download-if: active-gl-driver
+    enable-if: active-gl-driver
+    autoprune-unless: active-gl-driver
+
+  org.freedesktop.Platform.VAAPI.Intel.i386:
+    directory: lib/i386-linux-gnu/dri/intel-vaapi-driver
+    version: '26.08'
+    versions: '26.08'
+    autodelete: false
+    no-autodownload: true
+    add-ld-path: lib
+    download-if: have-intel-gpu
+    autoprune-unless: have-intel-gpu
+
+finish-args:
+  - --allow=multiarch
+  - --socket=wayland
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --device-if=all:!has-input-device
+  - --device=input
+  - --share=ipc
+  - --share=network
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --filesystem=xdg-run/tray-icon:create
+  - --filesystem=host
+  - --env=__NV_DISABLE_EXPLICIT_SYNC=1
+  # When started from an AppImage (e.g. a terminal inside another AppImage app), these leak in
+  # and the launcher thinks it is an AppImage, even with its self-updater disabled
+  - --unset-env=APPDIR
+  - --unset-env=APPIMAGE
+  # Updates come through Flatpak. Without this the launcher tries to update itself on every
+  # start, fails, and shows an update error dialog
+  - --env=EGL_DISABLE_SELF_UPDATE=1
+
+modules:
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+
+  - name: umu-launcher
+    buildsystem: simple
+
+    sources:
+      - type: file
+        url: https://github.com/Open-Wine-Components/umu-launcher/releases/download/1.4.4/umu-launcher-1.4.4-zipapp.tar
+        sha256: eb590691841f7fad3fc3ad8fd5db4ccb87849fe7948e62b28ece7a4ee48cc851
+        x-checker-data:
+          type: github
+          repo: Open-Wine-Components/umu-launcher
+          tag-pattern: ^([0-9.]+)$
+          asset-name: umu-launcher-${version}-zipapp.tar
+
+    build-commands:
+      - tar --extract --file umu-launcher-1.4.4-zipapp.tar
+      - install -Dm755 umu/umu-run /app/bin/umu-run
+
+  - name: EpicGamesLauncher
+    buildsystem: simple
+
+    sources:
+      - type: file
+        url: https://content-download-egs.distro.on.epicgames.com/Builds/EGLv2/0.113.0%2Bg2164614/Linux/EpicGamesLauncher-x86_64.deb?launcherfilename=EpicGamesLauncher-x86_64.deb
+        sha256: 884def8de247bc279bea571be6f5dec6c5481ac94cc06af62b577624be56c201
+        dest-filename: EpicGamesLauncher-x86_64.deb
+        x-checker-data:
+          type: rotating-url
+          url: https://launcher-public-service-prod06.ol.epicgames.com/launcher/api/installer/download/EpicGamesLauncher-x86_64.deb
+          pattern: https://content-download-egs\.distro\.on\.epicgames\.com/Builds/EGLv2/(\d+\.\d+\.\d+)%2Bg\S+/Linux/EpicGamesLauncher-x86_64\.deb\?launcherfilename=EpicGamesLauncher-x86_64\.deb
+          no-extract-version: true
+      - type: file
+        path: com.epicgames.launcher.metainfo.xml
+
+    build-commands:
+      - set -e
+
+      - mkdir -p /app/lib/i386-linux-gnu/GL
+
+      - mkdir deb-extract
+      - ar -x EpicGamesLauncher-x86_64.deb --output deb-extract
+      - tar --extract --file deb-extract/data.tar.gz --directory deb-extract
+
+      - install -Dm755 deb-extract/usr/bin/EpicGamesLauncher /app/bin/EpicGamesLauncher
+
+      - mkdir -p /app/lib/epic-games-launcher
+      - cp -r deb-extract/usr/lib/epic-games-launcher/. /app/lib/epic-games-launcher
+      - find /app/lib/epic-games-launcher -type f -exec chmod 644 {} \;
+
+      - sed -i 's/^Comment=.*/Comment=Download, install, and play games from the Epic
+        Games Store/' deb-extract/usr/share/applications/epic-games-launcher.desktop
+      - sed -i 's/^Icon=.*/Icon=com.epicgames.launcher/' deb-extract/usr/share/applications/epic-games-launcher.desktop
+      - install -Dm644 deb-extract/usr/share/applications/epic-games-launcher.desktop
+        /app/share/applications/com.epicgames.launcher.desktop
+
+      - install -Dm644 deb-extract/usr/share/icons/hicolor/128x128/apps/EpicGamesLauncher.png
+        /app/share/icons/hicolor/128x128/apps/com.epicgames.launcher.png
+      - install -Dm644 deb-extract/usr/share/icons/hicolor/32x32/apps/EpicGamesLauncher.png
+        /app/share/icons/hicolor/32x32/apps/com.epicgames.launcher.png
+      - install -Dm644 deb-extract/usr/share/icons/hicolor/256x256@2/apps/EpicGamesLauncher.png
+        /app/share/icons/hicolor/256x256@2/apps/com.epicgames.launcher.png
+      - install -Dm644 com.epicgames.launcher.metainfo.xml /app/share/metainfo/com.epicgames.launcher.metainfo.xml
