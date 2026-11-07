@@ -1,0 +1,155 @@
+app-id: com.brave.Origin
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+base: org.chromium.Chromium.BaseApp
+base-version: '25.08'
+command: brave-origin
+separate-locales: false
+build-options:
+  no-debuginfo: true
+finish-args:
+  - --require-version=1.8.2
+  - --device=all
+  - --share=ipc
+  - --share=network
+  - --socket=cups
+  - --socket=pcsc # FIDO2
+  - --socket=pulseaudio
+  - --socket=x11
+  - --socket=wayland
+  - --allow=bluetooth # FIDO2 CTAP hybrid transport
+  - --system-talk-name=org.bluez
+  - --system-talk-name=org.freedesktop.Avahi
+  - --system-talk-name=org.freedesktop.UPower
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --talk-name=org.freedesktop.FileManager1
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.kde.kwalletd5
+  - --talk-name=org.kde.kwalletd6
+  - --talk-name=org.gnome.SessionManager
+  - --talk-name=org.gnome.ScreenSaver
+  - --talk-name=org.gnome.Mutter.IdleMonitor.*
+  - --talk-name=org.cinnamon.ScreenSaver
+  - --talk-name=org.mate.ScreenSaver
+  - --talk-name=org.xfce.ScreenSaver
+  - --own-name=org.mpris.MediaPlayer2.brave.*
+  - --filesystem=/run/.heim_org.h5l.kcm-socket
+  - --filesystem=xdg-run/pipewire-0
+  # To load policies on the host /etc/brave/policies
+  - --filesystem=host-etc
+  # To install a PWA application
+  - --filesystem=home/.local/share/applications:create
+  - --filesystem=home/.local/share/icons:create
+  # To allow installing shortcuts on the desktop
+  - --filesystem=xdg-desktop
+  # For default download directory to work as expected
+  - --filesystem=xdg-download
+  # For MPRIS media cover art
+  - --filesystem=/tmp
+  # For imported CA certificates
+  - --persist=.pki
+  # For GNOME proxy resolution
+  - --filesystem=xdg-run/dconf
+  - --filesystem=~/.config/dconf:ro
+  - --talk-name=ca.desrt.dconf
+  - --env=DCONF_USER_CONFIG_DIR=.config/dconf
+  - --env=GIO_EXTRA_MODULES=/app/lib/gio/modules
+  - --env=GSETTINGS_BACKEND=dconf
+  # Set the release channel correctly
+  - --env=CHROME_VERSION_EXTRA=stable
+  # For KDE proxy resolution (KDE5 only)
+  - --filesystem=~/.config/kioslaverc
+modules:
+  - name: dconf
+    buildsystem: meson
+    config-opts:
+      - -Dbash_completion=false
+      - -Dman=false
+      - -Dvapi=false
+    cleanup:
+      - /etc
+      - /include
+      - ca.desrt.dconf.service
+      - dconf.service
+      - dconf-service
+      - '*.pc'
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/dconf/51/dconf-51.0.tar.xz
+        sha256: e65c1b7867f836faad9f9ee04acf5c5a6cae2bbc784833fe093207e0cb590248
+        x-checker-data:
+          type: gnome
+          name: dconf
+          stable-only: true
+      # From: https://src.fedoraproject.org/rpms/dconf
+      - type: patch
+        path: dconf-override.patch
+
+  - name: zypak
+    sources:
+      - type: git
+        url: https://github.com/refi64/zypak
+        tag: v2025.09
+        commit: 693a71c5ffa80ec9c9ce2ae03b1ccc493c698e53
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+
+  - name: brave-origin
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/brave
+      - bsdtar --no-same-owner -xf brave-origin.zip -C /app/brave
+      # Pieces that only make sense for a system-wide install.
+      - rm -rf /app/brave/cron /app/brave/apparmor.d /app/brave/default-app-block
+      - for size in 16 24 32 48 64 128 256; do
+          install -Dm 644 /app/brave/product_logo_${size}.png
+            /app/share/icons/hicolor/${size}x${size}/apps/com.brave.Origin.png;
+        done
+      - install -Dm 644 com.brave.Origin.desktop -t /app/share/applications
+      - install -Dm 755 brave-origin.sh /app/bin/brave-origin
+      - install -Dm 644 -t /app/etc cobalt.ini
+      - install -Dm 644 -t /app/share/metainfo com.brave.Origin.metainfo.xml
+    sources:
+      # Brave publishes nightly and beta Origin builds on the same releases page;
+      # the queries only match the stable "brave-origin-<version>-linux-*.zip" assets.
+      - type: file
+        url: https://github.com/brave/brave-browser/releases/download/v1.99.55/brave-origin-1.99.55-linux-amd64.zip
+        sha256: 9d0e39e4020bfdf7aafc51308017d440ec009f8f3bbd91b67876b0d65a55505d
+        dest-filename: brave-origin.zip
+        only-arches: [x86_64]
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/brave/brave-browser/releases?per_page=100
+          version-query: >-
+            first(.[] | select(any(.assets[]; .name | test("^brave-origin-[0-9.]+-linux-amd64\\.zip$"))))
+            | .tag_name | ltrimstr("v")
+          url-query: >-
+            "https://github.com/brave/brave-browser/releases/download/v" + $version
+            + "/brave-origin-" + $version + "-linux-amd64.zip"
+          is-main-source: true
+      - type: file
+        url: https://github.com/brave/brave-browser/releases/download/v1.99.55/brave-origin-1.99.55-linux-arm64.zip
+        sha256: 6000e3cbc78ef4a1683d59c2b2a1d8d58749aabb288e0c083f29241971f1a31d
+        dest-filename: brave-origin.zip
+        only-arches: [aarch64]
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/brave/brave-browser/releases?per_page=100
+          version-query: >-
+            first(.[] | select(any(.assets[]; .name | test("^brave-origin-[0-9.]+-linux-arm64\\.zip$"))))
+            | .tag_name | ltrimstr("v")
+          url-query: >-
+            "https://github.com/brave/brave-browser/releases/download/v" + $version
+            + "/brave-origin-" + $version + "-linux-arm64.zip"
+      - type: file
+        path: cobalt.ini
+      - type: file
+        path: com.brave.Origin.metainfo.xml
+      - type: file
+        path: com.brave.Origin.desktop
+      - type: file
+        path: brave-origin.sh
