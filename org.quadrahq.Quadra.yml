@@ -1,0 +1,87 @@
+app-id: org.quadrahq.Quadra
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.llvm22
+command: quadrahq
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/*/pkgconfig
+  - /lib/cmake
+  - /share/gir-1.0
+  - /share/gtk-doc
+  - /share/doc
+  - /share/man
+  - /lib/*.a
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+  # Roblox asks the GPU driver for VRAM through sysfs (host_vram_bytes).
+  - --filesystem=/sys/class/drm:ro
+  - --filesystem=xdg-run/discord-ipc-0
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+  - --filesystem=xdg-run/app/com.discordapp.DiscordCanary:create
+  - --filesystem=xdg-run/.flatpak/dev.vencord.Vesktop:create
+modules:
+  - name: darling
+    buildsystem: simple
+    build-commands:
+      - sh install-darling.sh debs.zip
+    sources:
+      - type: file
+        url: https://github.com/darlinghq/darling/releases/download/v0.1.20260608/debs_20260608.zip
+        sha256: 27469ef3932da2e91dd7fb34b70e3628a3e54b7af9fb5480051f44af35eca1fd
+        dest-filename: debs.zip
+      - type: file
+        path: install-darling.sh
+
+  - name: quadrahq
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/llvm22/bin
+      prepend-ld-library-path: /usr/lib/sdk/llvm22/lib
+    build-commands:
+      # The shim and the stub frameworks, against Darling's macOS root.
+      - QUADRA_BUILD_DIR=/app/lib/quadrahq/shim DARLING_SYSROOT=/app/libexec/darling ./build_debug_shim.sh
+      - rm -f /app/lib/quadrahq/shim/fast_libc.o
+      # Darling without root (see flatpak/darling-noroot.c).
+      - gcc -shared -fPIC -O2 -o /app/lib/quadrahq/darling-noroot.so flatpak/darling-noroot.c -ldl
+      - clang -target x86_64-apple-darwin -fuse-ld=lld -isysroot /app/libexec/darling -mmacosx-version-min=11.0
+        -dynamiclib -O2 -o /app/lib/quadrahq/launchd_pid1.dylib flatpak/launchd_pid1.c
+      - install -d /app/share/quadrahq
+      - cp -r launcher branding /app/share/quadrahq/
+      - rm -rf /app/share/quadrahq/branding/source
+      - install -m644 patch_startup_throttle.py /app/share/quadrahq/
+      - install -m644 README.md /app/share/quadrahq/
+      - install -Dm644 LICENSE /app/share/licenses/quadrahq/LICENSE
+      - install -m644 LICENSES/MIT-MacOBlox.txt /app/share/licenses/quadrahq/
+      - install -m644 launcher/quadra/assets/fonts/*-OFL.txt /app/share/licenses/quadrahq/
+      - rm -f /app/share/quadrahq/launcher/install.sh
+      - python3 -m compileall -q -d /app/share/quadrahq/launcher /app/share/quadrahq/launcher
+      - install -Dm755 flatpak/quadrahq.sh /app/bin/quadrahq
+      - for size in 16 22 24 32 48 64 128 256 512 1024; do
+          install -Dm644 "branding/icons/quadrahq-$size.png" "/app/share/icons/hicolor/${size}x${size}/apps/quadrahq.png";
+          done
+      - for size in 16 22 24 32 48 64 128 256 512; do
+          install -Dm644 "branding/icons/quadrahq-$size.png" "/app/share/icons/hicolor/${size}x${size}/apps/org.quadrahq.Quadra.png";
+          done
+      - install -d /app/share/applications
+      - sed 's/^Icon=.*/Icon=org.quadrahq.Quadra/' packaging/org.quadrahq.Quadra.desktop
+        > /app/share/applications/org.quadrahq.Quadra.desktop
+      - sed 's/^Icon=.*/Icon=org.quadrahq.Quadra/' packaging/org.quadrahq.Quadra.URI.desktop
+        > /app/share/applications/org.quadrahq.Quadra.URI.desktop
+      # The Roblox window's own entry, so docks show its icon.
+      - sed 's/^Icon=.*/Icon=org.quadrahq.Quadra/' packaging/quadrahq-roblox-window.desktop
+        > /app/share/applications/org.quadrahq.Quadra.RobloxWindow.desktop
+      - install -Dm644 flatpak/org.quadrahq.Quadra.metainfo.xml -t /app/share/metainfo
+    sources:
+      - type: git
+        url: https://github.com/QuadraHQ/Quadra.git
+        tag: v0.43.2
+        commit: 43a1815a1a79c78e649ef1a66bf7f19d587bc207
