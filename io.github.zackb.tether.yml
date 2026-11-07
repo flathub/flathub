@@ -1,0 +1,85 @@
+# Flathub manifest for tether. Submitted to github.com/flathub; bump tag and commit per release.
+
+app-id: io.github.zackb.tether
+runtime: org.gnome.Platform
+runtime-version: "51"
+sdk: org.gnome.Sdk
+command: tether-gtk
+rename-desktop-file: tether-gtk.desktop
+rename-icon: tether
+
+finish-args:
+  - --share=network # mDNS discovery and the mTLS listener
+  - --socket=wayland
+  - --socket=fallback-x11 # clipboard sync is the only thing that needs Wayland
+  - --share=ipc # X11 shared memory
+  - --system-talk-name=org.bluez # adapter, devices, GATT for ANCS
+  - --system-talk-name=org.freedesktop.Avahi # Bonjour, so the iPhone finds this PC
+  - --talk-name=org.bluez.obex # MAP messages and PBAP contacts
+  - --talk-name=org.freedesktop.Notifications
+  - --filesystem=xdg-download # where received files go
+  - --allow=bluetooth
+
+modules:
+  - name: gtk-layer-shell
+    buildsystem: meson
+    config-opts:
+      - --libdir=lib
+      - -Dexamples=false
+      - -Ddocs=false
+      - -Dtests=false
+    sources:
+      - type: archive
+        url: https://github.com/wmww/gtk-layer-shell/archive/refs/tags/v0.10.1.tar.gz
+        sha256: 88c3a3e0a5300532f3d368d5df64838a87f1fb85273f22d41df0a6b8d0ec59c6
+
+  - name: bluez-btmgmt
+    buildsystem: autotools
+    config-opts:
+      - --disable-systemd
+      - --disable-udev
+      - --disable-cups
+      - --disable-obex
+      - --disable-monitor
+      - --disable-manpages
+      - --enable-tools
+      - --enable-library
+    no-make-install: true
+    post-install:
+      - install -Dm755 tools/btmgmt /app/bin/btmgmt
+    sources:
+      - type: archive
+        url: https://www.kernel.org/pub/linux/bluetooth/bluez-5.87.tar.xz
+        sha256: 26bdcf2cebd7310c6f598850606b037ef0c515fe6608ebc54d22c50c4c32b35f
+
+  - name: nlohmann-json
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DJSON_BuildTests=OFF
+    sources:
+      - type: archive
+        url: https://github.com/nlohmann/json/archive/refs/tags/v3.12.0.tar.gz
+        sha256: 4b92eb0c06d10683f7447ce9406cb97cd4b453be18d7279320f7b2f025c10187
+    cleanup:
+      - /include
+      - /share/cmake
+      - /share/pkgconfig
+
+  - name: tether
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DTETHER_BUILD_EXTENSIONS=OFF
+      - -DTETHER_BUILD_TUI=OFF
+      - -DTETHER_CAMERA=OFF
+      - -DBUILD_TESTING=OFF
+      - -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+    post-install:
+      - rm -rf /app/share/icons/hicolor/1024x1024
+    sources:
+      - type: git
+        url: https://github.com/zackb/tether.git
+        commit: 1cbb3c6de7fb6f58919140b274d13d0530bd16a9
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
