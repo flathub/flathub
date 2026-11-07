@@ -2,7 +2,7 @@
 # PoktCode Flatpak launcher — uses zypak from Electron BaseApp.
 set -eu
 
-export TMPDIR="${XDG_RUNTIME_DIR:-/tmp}/app/${FLATPAK_ID:-com.poktweb.poktcode}"
+export TMPDIR="${XDG_RUNTIME_DIR:-/tmp}/app/${FLATPAK_ID:-io.github.poktweb.poktcode-releases}"
 mkdir -p "$TMPDIR"
 
 # Integrated terminal bridge to host shell
@@ -39,7 +39,7 @@ elif [ -n "${WAYLAND_DISPLAY:-}" ]; then
   OZONE_ARGS=(--ozone-platform=wayland)
 fi
 
-APP_DIR="/app/lib/com.poktweb.poktcode"
+APP_DIR="/app/lib/io.github.poktweb.poktcode-releases"
 BIN="$APP_DIR/poktcode.bin"
 
 if [ ! -x "$BIN" ]; then

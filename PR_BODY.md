@@ -1,6 +1,8 @@
 ### Please confirm your submission meets all the criteria
 
 - [x] Please describe the application briefly.
+**Flatpak ID:** `io.github.poktweb.poktcode-releases` (matches the public https://github.com/poktweb/poktcode-releases repo; `poktweb.com` is not live yet — we will request a rename to `com.poktweb.poktcode` when the domain is ready).
+
 **PoktCode** is an AI-powered desktop IDE based on Eclipse Theia (Electron). It is a full coding environment with its own branding and welcome flow, plus first-class AI tooling:
 
 - **Providers catalog** — large directory of AI backends with filters for free, connected, API key, OAuth, IDE subscriptions, and local/self-hosted. Connect Ollama/LM Studio, OpenAI-compatible APIs, Anthropic, Google, Azure, Hugging Face, and many others; manage keys/OAuth and choose models for chat, image, and video.
@@ -30,11 +32,11 @@ Public binaries/screenshots: https://github.com/poktweb/poktcode-releases
 
 ### Domain note
 
-`poktweb.com` is not live yet (Vercel custom domain planned). Homepage temporarily points to the releases repository — please grant an exception for `appid-url-not-reachable` until verification can be completed.
+`poktweb.com` is not live yet. Submission uses `io.github.poktweb.poktcode-releases` so the App ID matches the public releases repository. Rename to `com.poktweb.poktcode` is planned after the domain is online.
 
-### Permission exceptions
+### Permission note
 
-See `SUBMISSION.md` in this branch (`filesystem=host`, `flatpak-spawn`, SSH auth, GPU/device, login1, portals) required for IDE workflows.
+Initial submission uses a reduced sandbox so the automated linter can pass (`filesystem=home`, Wayland+fallback-X11). After the test build is green we will request exceptions for IDE needs: `--filesystem=host`, `--socket=ssh-auth`, `--talk-name=org.freedesktop.Flatpak` (host MCP/tooling), and `--system-talk-name=org.freedesktop.login1` (Chromium startup). See `SUBMISSION.md`.
 
 [appid]: https://docs.flathub.org/docs/for-app-authors/requirements#application-id
 [reqs]: https://docs.flathub.org/docs/for-app-authors/requirements
