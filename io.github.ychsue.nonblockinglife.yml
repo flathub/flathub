@@ -4,105 +4,58 @@ runtime-version: '51'
 sdk: org.gnome.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.dotnet10
-command: NonBlockingLife
+command: io.github.ychsue.nonblockinglife
 finish-args:
   - --share=ipc
   - --share=network
   - --socket=x11
-  # - --socket=wayland
   - --socket=pulseaudio
   - --device=dri
-  - --talk-name=org.kde.StatusNotifierWatcher
-  - --talk-name=org.freedesktop.Notifications
-  - --env=DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
-  # 確保加上以下與語言/環境變數相關的權限：
-  - --filesystem=host:ro  # 讓應用程式能讀取系統設定 (若需要)
-  - --system-talk-name=org.freedesktop.resolve1
-  - --system-talk-name=org.freedesktop.NetworkManager
 modules:
-  - name: vlc
-    cleanup:
-      - /include
-      - /bin/vlc*
-      - /share
-    build-options:
-      env:
-        BUILDCC: gcc
-        CC: gcc
-        CXX: g++
-    config-opts:
-     # --- 基礎關閉 ---
-      - --disable-vlc
-      - --disable-qt
-      - --disable-skins2
-      - --disable-vdpau
-      - --disable-xcb
-      - --disable-alsa
-      - --disable-lua
-      # --- 影音/解碼器極致精簡 (關閉所有用不到的視訊與音訊) ---
-      - --disable-vout         # 🔴 關閉所有影片輸出
-      - --disable-video        # 🔴 停用視訊功能
-      - --disable-avcodec      # 關閉 ffmpeg 解碼 (VLC 內建有別的輕量 mp3 解碼)
-      - --disable-avformat
-      - --disable-swscale
-      - --disable-postproc
-      - --disable-a52          # 關閉杜比音訊
-      - --disable-dca          # 關閉 DTS
-      - --disable-flac         
-      - --disable-ogg          # 關閉 OGG (若不需要)
-      - --disable-speex        # 關閉 Speex
-      - --disable-theora       # 關閉 Theora 影片
-      - --disable-vorbis       # 關閉 Vorbis 音訊
-      - --disable-mad          # 關閉舊版 mad MP3 解碼 (保留預設輕量解碼即可)
-      # --- 網路與系統功能關閉 ---
-      - --disable-sout         # 🔴 關閉串流輸出 (Streaming)
-      - --disable-httpd        # 關閉內建網頁伺服器
-      - --disable-vlm          # 關閉 VLM 媒體經理
-      - --disable-screen       # 關閉螢幕錄影錄音
-      - --disable-addonmgr     # 關閉外掛管理器
-      - --disable-bluray       # 關閉藍光支援
-      - --disable-dvdnav       # 關閉 DVD 導航
-      - --disable-dvdread      # 關閉 DVD 讀取
-      # --- 確保保留的功能 ---     
-      - --enable-pulse # 確保能走 pulseaudio 輸出
+  - name: libbass
+    buildsystem: simple
     sources:
       - type: archive
-        url: https://get.videolan.org/vlc/3.0.24/vlc-3.0.24.tar.xz
-        sha256: e7cab503d1d7d5849b89d2cf0e1ee60d0ef6d012407791b644b9cfc0cc225fdf
-
+        url: https://www.un4seen.com/files/bass24-linux.zip
+        dest: bass24-linux
+        sha512: 4c5e88287d5e655fdd0ee2a6398b024935d434638ce30e3347eea755a9e9287bb6c26fd85c1125e6f6b1bc3dec8dfcd9e88909371b09489aad8ca95dade0be16
+      - type: archive
+        url: https://www.un4seen.com/files/bassflac24-linux.zip
+        dest: bassflac24-linux
+        sha512: 4d8ae28bdcbcce49943a9fc3da3dad7a59199629a59a2dd536282a77fdefa78285936f86c88c7bc4509a271819feb251c1c371decb40d280b331d714c45b820e
+    build-commands:
+      # Check the target and then install it
+      - |
+        if [ "$FLATPAK_ARCH" = "x86_64" ]; then
+          find ./ -path "*x86_64/libbass.so" -exec install -Dm755 {} /app/lib/libbass.so \;
+          find ./ -path "*x86_64/libbassflac.so" -exec install -Dm755 {} /app/lib/libbassflac.so \;
+        elif [ "$FLATPAK_ARCH" = "aarch64" ]; then
+          find ./ -path "*aarch64/libbass.so" -exec install -Dm755 {} /app/lib/libbass.so \;
+          find ./ -path "*aarch64/libbassflac.so" -exec install -Dm755 {} /app/lib/libbassflac.so \;
+        fi
   - name: NonBlockingLife
     buildsystem: simple
     build-options:
-      # 💡 這一行最重要！它會把 dotnet10 的指令路徑加進環境變數
+      # 💡 This line is quite important! It adds the dotnet10 command path to the environment variable
       append-path: /usr/lib/sdk/dotnet10/bin
-      # 本機測試用：允許 build 期間連網 restore NuGet。上 Flathub 前需改為離線來源
-      # (flatpak-dotnet-generator.py 產生 nuget-sources.json) 並移除此行。
-      # build-args:
-      #   - --share=network
       env:
         DOTNET_CLI_TELEMETRY_OPTOUT: '1'
         DOTNET_NOLOGO: '1'
     build-commands:
-      # # 1. 檢查目前目錄底下有哪些檔案（確認 nuget-sources.json 有沒有進來）
-      # - ls -la
-      # # 2. 檢查 flatpak-builder 有沒有把套件解開到預期的資料夾
-      # - find / -name "*.nupkg" 2>/dev/null || true      
-      # 先進行離線還原，指定從本機目錄讀取套件
+      # First, perform an offline restore, specifying to read packages from the local directory
       - dotnet restore desktop/src/Nbl.Desktop/Nbl.Desktop.csproj --packages /run/build/NonBlockingLife/nuget-packages -s nuget-sources -r linux-x64
       - dotnet restore desktop/src/Nbl.Bridge/Nbl.Bridge.csproj --packages /run/build/NonBlockingLife/nuget-packages -s nuget-sources -r linux-x64
-      # # 檢查 NuGet 套件來源是否存在
-      # - ls -la nuget-sources || true
 
-      # 接著進行發布 
-      - dotnet publish desktop/src/Nbl.Desktop/Nbl.Desktop.csproj -c Release -r linux-x64 --self-contained true --no-restore -p:PublishAot=false -p:RuntimeIdentifiers=linux-x64 -o /app/lib/nonblockinglife
+      # Then, publish the project
+      - dotnet publish desktop/src/Nbl.Desktop/Nbl.Desktop.csproj -c Release -r linux-x64 --self-contained true --no-restore -p:PublishAot=false -p:RuntimeIdentifiers=linux-x64 -p:RestorePackagesPath=/run/build/NonBlockingLife/nuget-packages -p:NblUseSystemBass=true -o /app/lib/nonblockinglife
       - mkdir -p /app/bin
-      - ln -s /app/lib/nonblockinglife/Nbl.Desktop /app/bin/NonBlockingLife
+      - ln -s /app/lib/nonblockinglife/Nbl.Desktop /app/bin/io.github.ychsue.nonblockinglife
       - install -Dm644 desktop/io.github.ychsue.nonblockinglife.desktop /app/share/applications/io.github.ychsue.nonblockinglife.desktop
       - install -Dm644 desktop/io.github.ychsue.nonblockinglife.png /app/share/icons/hicolor/256x256/apps/io.github.ychsue.nonblockinglife.png
-    # 4. 🔥 關鍵：安裝 metainfo.xml 到 AppStream 標準目錄
+    # 🔥 Important: Install the metainfo.xml to the AppStream standard directory
       - install -Dm644 desktop/io.github.ychsue.nonblockinglife.metainfo.xml /app/share/metainfo/io.github.ychsue.nonblockinglife.metainfo.xml
     sources:
       - type: git
         url: https://github.com/ychsue/NonBlockingLife/
-        branch: af3853091dab23eaa0564a3bcd529a3f1a3b2932
+        branch: 171ce3df3c89a01a93d1391245bd7185da770f57
       - ./nuget-sources.json
