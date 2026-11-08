@@ -5,6 +5,9 @@ if [[ -z "$GITHUB_WORKSPACE" || -z "$GITHUB_REPOSITORY" ]]; then
     exit 1
 fi
 
+report_dir="$GITHUB_WORKSPACE/checker-health"
+mkdir -p "$report_dir" || exit 1
+
 git config --global user.name "flathubbot" && \
 git config --global user.email "sysadmin@flathub.org"
 
@@ -150,7 +153,7 @@ for repo in "${checker_apps[@]}"; do
 
     echo "==> checking ${repo}"
     ((checked_apps += 1))
-    if /app/flatpak-external-data-checker --verbose --update "${FEDC_OPTS[@]}" "$repo/$manifest"; then
+    if /app/flatpak-external-data-checker --verbose --update --report-json "$report_dir/$repo.json" "${FEDC_OPTS[@]}" "$repo/$manifest"; then
         status=0
     else
         status=$?
