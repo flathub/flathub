@@ -1,0 +1,130 @@
+{
+  "app-id": "org.makhmuduz.Melyar",
+  "runtime": "org.kde.Platform",
+  "runtime-version": "6.10",
+  "sdk": "org.kde.Sdk",
+  "command": "melyar-wrapper",
+  "finish-args": [
+    "--socket=fallback-x11",
+    "--socket=wayland",
+    "--socket=session-bus",
+    "--device=dri",
+    "--share=network",
+    "--talk-name=org.mpris.MediaPlayer2.melyar",
+    "--talk-name=org.freedesktop.Notifications",
+    "--filesystem=xdg-run/melyar:create",
+    "--filesystem=home",
+    "--env=XDG_DATA_DIRS=/app/share:/usr/share:/var/lib/flatpak/exports/share:/usr/local/share/:/usr/share/",
+    "--env=LD_LIBRARY_PATH=/app/lib:${LD_LIBRARY_PATH}"
+  ],
+  "cleanup": [
+    "/include",
+    "/lib/cmake",
+    "/lib/pkgconfig",
+    "/man",
+    "/share/doc",
+    "/share/man",
+    "/share/pkgconfig",
+    "/bin/melyar-config"
+  ],
+  "modules": [
+    {
+      "name": "qtwebengine-libs",
+      "buildsystem": "simple",
+      "build-commands": [
+        "mkdir -p /app/lib /app/libexec /app/lib/cmake",
+        "curl -L -o /tmp/qtwebengine-libs.tar.xz 'https://github.com/MAKHMUDuz/melyar-flatpak-raw/releases/download/v0.0.2/qtwebengine-libs.tar.xz' || true",
+        "if [ -f /tmp/qtwebengine-libs.tar.xz ]; then",
+        "  tar -xJf /tmp/qtwebengine-libs.tar.xz -C /tmp/",
+        "  cp -v /tmp/qtwebengine-libs/lib/libQt6WebEngine* /app/lib/",
+        "  cp -rv /tmp/qtwebengine-libs/lib/cmake/. /app/lib/cmake/",
+        "  cp -v /tmp/qtwebengine-libs/libexec/qwebengine_convert_dict /app/libexec/",
+        "fi",
+        "sed -i 's|\"/./libexec/qwebengine_convert_dict\"|\"/app/libexec/qwebengine_convert_dict\"|g' /app/lib/cmake/Qt6WebEngineCoreTools/Qt6WebEngineCoreToolsTargets.cmake 2>/dev/null || true"
+      ],
+      "sources": []
+    },
+    {
+      "name": "melyar",
+      "buildsystem": "cmake-ninja",
+      "sources": [
+        {
+          "type": "git",
+          "url": "https://github.com/MAKHMUDuz/melyar.git",
+          "branch": "master"
+        },
+        {
+          "type": "git",
+          "url": "https://github.com/corrosion-rs/corrosion.git",
+          "tag": "v0.5.2",
+          "dest": "corrosion-src"
+        }
+      ],
+      "build-options": {
+        "cflags": ["-fno-lto"],
+        "cxxflags": ["-fno-lto"],
+        "ldflags": ["-fno-lto"],
+        "env": {
+          "CARGO_NET_OFFLINE": "false"
+        }
+      },
+      "config-opts": [
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_INSTALL_PREFIX=/app",
+        "-DCMAKE_FETCHCONTENT_SOURCE_DIR_CORROSION=/run/build/melyar/corrosion-src",
+        "-DCMAKE_EXE_LINKER_FLAGS=-fno-lto",
+        "-DCMAKE_SHARED_LINKER_FLAGS=-fno-lto",
+        "-DCMAKE_MODULE_LINKER_FLAGS=-fno-lto",
+        "-DQt6WebEngineQuick_DIR=/app/lib/cmake/Qt6WebEngineQuick",
+        "-DQt6WebEngineCore_DIR=/app/lib/cmake/Qt6WebEngineCore"
+      ],
+      "builddir": true,
+      "post-install": [
+        "sed -i 's|\"/./libexec/qwebengine_convert_dict\"|\"/app/libexec/qwebengine_convert_dict\"|g' /app/lib/cmake/Qt6WebEngineCoreTools/Qt6WebEngineCoreToolsTargets.cmake"
+      ],
+      "build-commands": [
+        "mkdir -p /app/libexec /app/bin /app/share/applications /app/share/icons/hicolor/scalable/apps /app/share/melyar/web",
+        "sed -i 's|https://github.com/corrosion-rs/corrosion.git|/run/build/melyar/corrosion-src|' CMakeLists.txt",
+        "cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/app -DCMAKE_CXX_FLAGS=-fno-lto -DCMAKE_C_FLAGS=-fno-lto -DCMAKE_EXE_LINKER_FLAGS=-fno-lto -DQt6WebEngineQuick_DIR=/app/lib/cmake/Qt6WebEngineQuick -DQt6WebEngineCore_DIR=/app/lib/cmake/Qt6WebEngineCore",
+        "cmake --build build -j$(nproc)",
+        "install -Dm755 build/melyar /app/libexec/melyar-real",
+        "cat > /app/bin/melyar-wrapper << 'WRAPPER_EOF'",
+        "#!/bin/sh",
+        "export LD_LIBRARY_PATH=/app/lib:${LD_LIBRARY_PATH:-}",
+        "exec /app/libexec/melyar-real \"$@\"",
+        "WRAPPER_EOF",
+        "chmod +x /app/bin/melyar-wrapper",
+        "cp -v resources/melyar.desktop /app/share/applications/",
+        "cp -v resources/melyar.svg /app/share/icons/hicolor/scalable/apps/",
+        "cp -rv ui_web/dist/* /app/share/melyar/web/"
+      ]
+    },
+    {
+      "name": "melyar-metainfo",
+      "buildsystem": "simple",
+      "build-commands": [
+        "install -Dm644 org.makhmuduz.Melyar.metainfo.xml /app/share/metainfo/org.makhmuduz.Melyar.metainfo.xml"
+      ],
+      "sources": [
+        {
+          "type": "file",
+          "path": "org.makhmuduz.Melyar.metainfo.xml"
+        }
+      ]
+    },
+    {
+      "name": "melyar-screenshots",
+      "buildsystem": "simple",
+      "build-commands": [
+        "install -d /app/share/melyar/screenshots",
+        "cp -v screenshots/*.png screenshots/*.gif /app/share/melyar/screenshots/"
+      ],
+      "sources": [
+        {
+          "type": "dir",
+          "path": "screenshots"
+        }
+      ]
+    }
+  ]
+}
