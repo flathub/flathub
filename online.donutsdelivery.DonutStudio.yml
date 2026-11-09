@@ -1,0 +1,69 @@
+app-id: online.donutsdelivery.DonutStudio
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: arbit
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --device=all
+  - --share=network
+  - --filesystem=xdg-music
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+  - --filesystem=xdg-desktop
+
+modules:
+  - name: squashfs-tools
+    buildsystem: simple
+    build-options:
+      no-debuginfo: true
+    build-commands:
+      - make -C squashfs-tools -j ${FLATPAK_BUILDER_N_JOBS} XZ_SUPPORT=1 ZSTD_SUPPORT=1 LZO_SUPPORT=0 LZ4_SUPPORT=0
+      - install -Dm755 squashfs-tools/unsquashfs -t /app/bin/
+    sources:
+      - type: git
+        url: https://github.com/plougher/squashfs-tools.git
+        tag: 4.6.1
+        commit: d8cb82d9840330f9344ec37b992595b5d7b44184
+
+  - name: arbit
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 arbit -t /app/bin/
+      - install -Dm755 apply_extra -t /app/bin/
+      - install -Dm644 online.donutsdelivery.DonutStudio.desktop -t /app/share/applications/
+      - install -Dm644 online.donutsdelivery.DonutStudio.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 online.donutsdelivery.DonutStudio.svg -t /app/share/icons/hicolor/scalable/apps/
+    sources:
+      - type: extra-data
+        filename: DonutStudio-x86_64.AppImage
+        only-arches:
+          - x86_64
+        url: https://donutsdelivery.online/download-donutstudio/files/DonutStudio-x86_64.AppImage
+        sha256: d0691cf4d4c8d9790d333fdffa3089030359b2e857b805cecf3f19abd2f0301c
+        size: 360405496
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - tail -c +944633 DonutStudio-x86_64.AppImage > DonutStudio.squashfs
+          - unsquashfs -d squashfs-root -quiet -no-progress DonutStudio.squashfs
+          - mv squashfs-root/usr .
+          - rm -rf squashfs-root DonutStudio-x86_64.AppImage DonutStudio.squashfs
+      - type: script
+        # dest-filename stays "arbit" — the engine binary is still called Arbit
+        # internally; the public name (DonutStudio) is set via the desktop
+        # file's Name= field below. Sandbox command name follows the
+        # dest-filename.
+        dest-filename: arbit
+        commands:
+          - exec /app/extra/usr/bin/DonutStudio "$@"
+      - type: file
+        path: online.donutsdelivery.DonutStudio.desktop
+      - type: file
+        path: online.donutsdelivery.DonutStudio.metainfo.xml
+      - type: file
+        path: online.donutsdelivery.DonutStudio.svg
