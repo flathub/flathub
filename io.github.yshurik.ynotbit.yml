@@ -11,19 +11,20 @@ finish-args:
   - --device=dri
   - --socket=pulseaudio
   - --talk-name=org.kde.StatusNotifierWatcher
-  - --talk-name=org.freedesktop.Notifications
 cleanup:
   - /include
-  - /lib/pkgconfig 
+  - /lib/pkgconfig
   - /lib/*.a
   - /lib/*.la
   - /bin/sqlcipher
   - /share/man
 modules:
+  # tclsh, to generate the SQLCipher amalgamation. Build-time only.
   - name: tcl
     buildsystem: simple
     subdir: unix
-    build-commands: 
+    build-commands:
+      # Its install makes libtcl read-only (chmod 555), which the debuginfo split cannot open.
       - sed -i '/chmod 555/d' Makefile.in
       - ./configure --prefix=/app
       - make -j$FLATPAK_BUILDER_N_JOBS
@@ -34,7 +35,7 @@ modules:
       - type: archive
         url: https://prdownloads.sourceforge.net/tcl/tcl8.6.16-src.tar.gz
         sha256: 91cb8fa61771c63c262efb553059b7c7ad6757afa5857af6265e4b0bdc2a14a5
-          
+
   - name: libsodium
     config-opts:
       - --disable-shared
@@ -58,38 +59,17 @@ modules:
         commit: c5bd336ece77922433aaf6d6fe8cf203b0c299d5
 
   - name: ynotbit
-    buildsystem: simple
-    build-commands:
-      - >-
-        cmake -S . -B build -G Ninja
-        -DCMAKE_BUILD_TYPE=Release
-        -DFETCHCONTENT_FULLY_DISCONNECTED=ON
-        -DFETCHCONTENT_SOURCE_DIR_SECP256K1=$PWD/deps/secp256k1
-        -DFETCHCONTENT_SOURCE_DIR_MINIUPNPC=$PWD/deps/miniupnpc
-      - cmake --build build --target ynotbit --parallel $FLATPAK_BUILDER_N_JOBS
-      - install -Dm755 build/ynotbit /app/bin/ynotbit
-      - install -Dm644 packaging/flatpak/io.github.yshurik.ynotbit.desktop -t /app/share/applications
-      - install -Dm644 packaging/flatpak/io.github.yshurik.ynotbit.metainfo.xml -t /app/share/metainfo
-      - |
-        for size in 16 20 24 32 40 48 64 96 128 256 512; do
-          install -Dm644 assets/icons/application/$size.png \
-            /app/share/icons/hicolor/${size}x${size}/apps/io.github.yshurik.ynotbit.png
-        done
-      - install -Dm644 assets/ynotbit.svg /app/share/icons/hicolor/scalable/apps/io.github.yshurik.ynotbit.svg
-      - install -Dm644 licenses/* -t /app/share/licenses/io.github.yshurik.ynotbit
-      - install -Dm644 third_party/notbit/COPYING /app/share/licenses/io.github.yshurik.ynotbit/notbit.txt
-      - install -Dm644 LICENSE THIRD_PARTY.md -t /app/share/licenses/io.github.yshurik.ynotbit 
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      # The Qt app only: the node is inside it.
+      - -DYNOTBIT_APP_ONLY=ON
+      # Install the desktop entry, icons and metainfo under the app ID.
+      - -DYNOTBIT_APP_ID=io.github.yshurik.ynotbit
     sources:
+      # secp256k1 and miniupnp are git submodules of this repository, checked out with it.
       - type: git
         url: https://github.com/yshurik/ynotbit.git
-        tag: v0.8.2
-        commit: 8c688a48d30ad896980a94e79db74212b3de8912
-      - type: archive
-        url: https://github.com/bitcoin-core/secp256k1/archive/refs/tags/v0.6.0.tar.gz
-        sha256: 785bb98e7d6705c51c8dfa8ac3af6aa2ccfa3774714d51c0b9e28fac1146e9f1
-        dest: deps/secp256k1
-      - type: archive
-        url: https://github.com/miniupnp/miniupnp/archive/refs/tags/miniupnpc_2_3_3.tar.gz
-        sha256: 8cf2c833b3e76fc4893ff29c2a376e3394962449e5970e373c0a91421724d222
-        dest: deps/miniupnpc
-
+        tag: v0.8.3
+        commit: dda1f1f569f234666f05aef0ebd92be7965abbcc
