@@ -55,34 +55,8 @@ if [[ -n "${APP_ID:-}" ]]; then
         [[ "$active" == true ]] && repos+=("$APP_ID")
     fi
 else
-    shard=$(((GITHUB_RUN_NUMBER - 1) % 6))
-
-    # Code search is only used to check extra-data apps on every run. Its
-    # index is incomplete, so every repo is also covered by its shard below.
-    echo "==> Searching for extra-data apps"
-    declare -A extra_data_repos=()
-    for extension in json yaml yml; do
-        query="\"extra-data\" org:flathub in:file extension:$extension"
-        page=1
-        while :; do
-            sleep 6.1
-            if ! result=$(gh api --method GET search/code \
-                -f q="$query" -F per_page=100 -F page="$page"); then
-                echo "Code search failed: $query (page $page)" >&2
-                break
-            fi
-            if ! jq -e '.incomplete_results == false and .total_count < 1000' \
-                <<< "$result" > /dev/null; then
-                echo "Incomplete search or 1000-result ceiling reached: $query (page $page)" >&2
-            fi
-            while IFS= read -r repo; do
-                [[ -n "$repo" ]] && extra_data_repos["$repo"]=1
-            done < <(jq -r '.items[].repository | select(.private == false) | .name' <<< "$result")
-            total=$(jq -r '.total_count' <<< "$result") || break
-            ((page * 100 < total)) || break
-            ((page++))
-        done
-    done
+    shard=${SHARD:?SHARD is not set}
+    [[ "$shard" =~ ^[0-5]$ ]] || { echo "Invalid shard: $shard" >&2; exit 1; }
 
     echo "==> Listing repos for shard $shard/6"
     org_repos=$(gh api --paginate "orgs/flathub/repos?type=public&per_page=100" \
@@ -90,11 +64,9 @@ else
     while IFS= read -r repo; do
         valid_repo_name "$repo" || continue
         [[ -z "${inactive_repos[$repo]:-}" ]] || continue
-        if [[ -z "${extra_data_repos[$repo]:-}" ]]; then
-            checksum=$(printf '%s' "$repo" | cksum)
-            checksum=${checksum%% *}
-            ((checksum % 6 == shard)) || continue
-        fi
+        checksum=$(printf '%s' "$repo" | cksum)
+        checksum=${checksum%% *}
+        ((checksum % 6 == shard)) || continue
         repos+=("$repo")
     done <<< "$org_repos"
 fi
