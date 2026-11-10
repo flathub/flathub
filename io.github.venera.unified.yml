@@ -1,0 +1,203 @@
+# Flatpak manifest template。
+# 不要直接改 io.github.venera.unified.yml（它是本文件经
+# .github/scripts/render_flatpak_manifest.py 渲染出来的产物）。
+#
+# 占位符由 flatpak-vendor.yml 在发版时填实：
+#   FLUTTER_VERSION        取 pubspec.yaml 的 environment.flutter
+#   FLUTTER_SHA256         官方 flutter_linux_<ver>-stable.tar.xz 的 sha256
+#   RELEASE_BASE           Release 资产基址，形如 .../releases/download/v1.20.0
+#   PUB_CACHE_ASSET / PUB_CACHE_SHA256
+#   ENGINE_ARTIFACTS_ASSET / ENGINE_ARTIFACTS_SHA256
+#   CARGO_VENDOR_ASSET / CARGO_VENDOR_SHA256
+#   SOURCE_TAG             构建取用的 git 标签
+# 上面每个名字两侧都带两枚 @ 号，就是模板里的占位符写法。
+app-id: io.github.venera.unified
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  # Flutter 的 Linux 构建要求 clang++；GNOME SDK 自己不带编译器，靠这个扩展提供。
+  - org.freedesktop.Sdk.Extension.llvm18
+command: venera-unified
+build-options:
+  prepend-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/cargo-home
+    CARGO_NET_OFFLINE: 'true'
+    # 我们在应用里自带 libayatana-appindicator 这条链；它的 pkg-config 文件装在 /app/lib/pkgconfig，
+    # 后面的模块（libayatana-indicator、应用模块里的 tray_manager）要能找到它。
+    PKG_CONFIG_PATH: /app/lib/pkgconfig:/app/share/pkgconfig
+finish-args:
+  - --share=ipc
+  # 托盘：linux 上 tray_manager 通过 StatusNotifier 注册图标。
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --share=network
+  - --filesystem=home
+  - --talk-name=org.gtk.vfs.*
+modules:
+  # Flutter SDK：构建期不需要联网，引擎产物由下面的 module 补进 bin/cache。
+  - name: flutter-sdk
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/flutter
+      - cp -a flutter/. /app/flutter/
+    sources:
+      # flatpak-builder 的 archive 源默认 strip-components=1，会把 flutter/ 这层剥掉，
+      # 显式写 0 才能保持官方包的顶层目录，下面的 cp 才成立。
+      - type: archive
+        url: https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.47.8-stable.tar.xz
+        sha256: baf7dcc5a3dbba60fe863bf493a6cf203195621f7786eaa5a1bba02cd0d87dd2
+        strip-components: 0
+  # flutter precache 下载的引擎产物（含 fonts/icu）。
+  - name: flutter-engine-artifacts
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/flutter/bin/cache
+      - cp -a artifacts /app/flutter/bin/cache/
+      # ONNX Runtime 单独放在 /app 下，等应用模块构建前再摆到插件期望的位置。
+      - mkdir -p /app/onnxruntime
+      - cp -a onnxruntime/. /app/onnxruntime/
+      # pdfium 也放 /app：应用模块会给 pdfium_dart 的 hook 传 PDFIUM_PREBUILT。
+      - mkdir -p /app/pdfium
+      - cp -a pdfium/. /app/pdfium/
+      # sqlite3 的 hook 也会联网拉预编译库，同样预置到 /app。
+      - mkdir -p /app/sqlite3
+      - cp -a sqlite3/. /app/sqlite3/
+    sources:
+      - type: archive
+        url: https://github.com/ACGNnsj/venera-unified/releases/download/v1.21.1/engine-artifacts-v1.21.1.tar.gz
+        sha256: f1deb4cf760357c2d9a09eed8803536308ffcdaccbd4ee35d8a698b04ca5588a
+        strip-components: 0
+  # 托盘图标：tray_manager 的 linux 端要用 pkg-config 找 ayatana-appindicator3-0.1，
+  # GNOME SDK 不自带这套库。用 Flathub shared-modules 的 canonical 模块（我们这份去掉了
+  # cleanup，好让应用模块构建时还能拿到头文件和 .pc）。
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+  # pub 缓存与 cargo vendor 直接解进应用模块自己的构建目录。
+  # 关键约束：flatpak-builder 的每条 build-command 都是独立的 sandbox，跨命令、跨模块只有
+  # /app 和「当前模块的构建目录」可见；把缓存放到别的模块的 /run/build/<name> 里，下一条命令就看不见了。
+  - name: venera-unified
+    buildsystem: simple
+    build-options:
+      env:
+        PATH: /app/flutter/bin:/usr/lib/sdk/llvm18/bin:/usr/lib/sdk/rust-stable/bin:/usr/bin:/bin
+        FLUTTER_ROOT: /app/flutter
+        PUB_CACHE: /app/pub-cache
+        CARGO_HOME: /run/build/venera-unified/.cargo-home
+        CARGO_NET_OFFLINE: 'true'
+        # cargokit 的 build_tool 运行器也会跑 pub get；离线沙箱里让它读缓存而不是联网。
+        CARGOKIT_PUB_OFFLINE: '1'
+        # pdfium_dart 的 hook 默认用 HTTP 拉 pdfium；给它本地库，见 patch_pdfium_hook.py。
+        PDFIUM_PREBUILT: /app/pdfium/lib/libpdfium.so
+        # GNOME SDK 48 的 libayatana-appindicator 把 app_indicator_new 标了 deprecated，
+        # tray_manager 又带 -Werror，插件编译会直接失败。这类第三方插件的弃用告警不该当错误。
+        CFLAGS: -Wno-deprecated-declarations
+        CXXFLAGS: -Wno-deprecated-declarations
+    build-commands:
+      - test -d hosted && test -d git || { echo '::error::pub cache 没解到构建目录'; exit 1; }
+      # pub 拒绝任何位于缓存根之下的目录当项目根。缓存若留在构建目录里，插件的 cargokit
+      # 临时目录就落在缓存内，super_native_extensions 会报 Cannot operate on packages inside the cache。
+      - mkdir -p /app/pub-cache && mv hosted git /app/pub-cache/ && test -d /app/pub-cache/hosted || { echo '::error::pub cache 没搬到 /app/pub-cache'; exit 1; }
+      - test -d vendor && test -f vendor-config.toml || { echo '::error::cargo vendor 没解到构建目录'; exit 1; }
+      # 诊断：pdfium 的预置库与打补丁后的 hook 都要在场，否则 hook 会退回联网下载。
+      - test -f /app/pdfium/lib/libpdfium.so && echo pdfium-library-present || echo pdfium-library-MISSING
+      - grep -l PDFIUM_PREBUILT /app/pub-cache/hosted/pub.dev/pdfium_dart-*/hook/build.dart || echo pdfium-hook-unpatched
+      - ls /app/sqlite3/*/libsqlite3.x64.linux.so || echo sqlite3-library-MISSING
+      - grep -l 'sqlite3 hook: prebuilt' /app/pub-cache/hosted/pub.dev/sqlite3-*/lib/src/hook/compile/description.dart || echo sqlite3-hook-unpatched
+      - mkdir -p .cargo-home && cp vendor-config.toml .cargo-home/config.toml && sed -i 's#^directory = .*#directory = "/run/build/venera-unified/vendor"#' .cargo-home/config.toml
+      # 先把 SDK 自己的工具树离线自举：官方 tar.xz 里没有 packages/flutter_tools/.dart_tool，
+      # 任何 flutter 命令（含 flutter pub get）首次运行都会现跑一次不带 --offline 的 pub get --example。
+      # 这一步只用 dart，所以不受该自举逻辑影响。
+      - cd /app/flutter/packages/flutter_tools && dart pub get --offline --example
+      # 诊断：SDK 自带的工具快照/版本戳若与 git 修订对不上，flutter 会在无网沙箱里重新自举。
+      - test -f /app/flutter/bin/cache/flutter_tools.snapshot && echo sdk-snapshot-present || echo sdk-snapshot-MISSING
+      - cat /app/flutter/bin/cache/flutter_tools.stamp || echo sdk-stamp-missing
+      - git -C /app/flutter rev-parse HEAD || echo sdk-git-revision-unavailable
+      - command -v clang++ || echo clang-missing
+      - command -v cmake && command -v ninja || true
+      - flutter --version || true
+      - flutter config --no-analytics
+      # 必须走 flutter 包装器而不是裸 dart：`flutter pub get` 顺带生成 linux/flutter/generated_plugins.cmake，
+      # 而 `flutter build --no-pub` 明确跳过这一步（shouldRunPub 为假就 return）。
+      - flutter pub get --offline --enforce-lockfile
+      # flutter_onnxruntime 的 linux 插件在 CMake 配置期会去 file(DOWNLOAD) 拉 ONNX Runtime；
+      # 沙箱无网时它不报下载错误、只在最后说“解压目录不存在”。把 vendor 阶段预下的那份
+      # 放进插件期望的 CMAKE_CURRENT_BINARY_DIR/onnxruntime 下，命中它的存在性检查就跳过下载。
+      - mkdir -p build/linux/x64/release/plugins/flutter_onnxruntime/onnxruntime
+      - cp -a /app/onnxruntime/. build/linux/x64/release/plugins/flutter_onnxruntime/onnxruntime/
+      # 发布标签里的 rhttp cargokit 还不认识 CARGOKIT_PUB_OFFLINE，这里就地补成 --offline。
+      - sed -i 's|pub get --no-precompile|pub get --no-precompile --offline|' packages/rhttp/cargokit/run_build_tool.sh && grep -c 'no-precompile --offline' packages/rhttp/cargokit/run_build_tool.sh
+      # cargokit 在找不到 rustup 时默认去 GitHub Releases 拉预编译产物（super_native_extensions
+      # 就是这么失败的）。沙箱没有 rustup，必须显式要求它从源码编，crates 已经在 vendor 里。
+      - |
+        printf 'use_precompiled_binaries: false\nverbose_logging: true\n' > cargokit_options.yaml
+      - test -f cargokit_options.yaml && cat cargokit_options.yaml
+      # cargokit 用 `rustup run <toolchain> cargo` 构建；Flatpak 的 rust-stable 扩展只有
+      # cargo/rustc、没有 rustup，于是它直接报 rustup not found。这里放一个极简替身，
+      # 把 run 落到真 cargo 上，工具链/目标查询一律回答“已装好”。
+      - |
+        mkdir -p .rustup-shim
+        cat > .rustup-shim/rustup <<'SHIM'
+        #!/bin/sh
+        case "$1" in
+          toolchain)
+            case "$2" in
+              list) echo "stable-x86_64-unknown-linux-gnu (default)"; exit 0 ;;
+              install) exit 0 ;;
+            esac ;;
+          target)
+            case "$2" in
+              list) echo "x86_64-unknown-linux-gnu"; exit 0 ;;
+              add) exit 0 ;;
+            esac ;;
+          component) exit 0 ;;
+          run) shift 2; exec "$@" ;;
+        esac
+        echo "rustup shim: 未支持的调用 $*" >&2
+        exit 1
+        SHIM
+        chmod +x .rustup-shim/rustup
+        PATH="$PWD/.rustup-shim:$PATH" flutter build linux --release --no-pub -v
+      - rm -rf /app/pub-cache
+      # flutter 只按 bundled_libraries 复制一个文件；ONNX Runtime 的 soname 是 libonnxruntime.so.1，
+      # 少了这条符号链接，插件 dlopen 失败、应用启动直接 127（libonnxruntime.so.1: cannot open）。
+      - |
+        cd build/linux/x64/release/bundle/lib
+        real=$(ls -1 libonnxruntime.so* 2>/dev/null | grep -v -e '^libonnxruntime\.so$' -e '^libonnxruntime\.so\.1$' | head -1 || true)
+        echo "onnx-real=${real:-none}"
+        if [ -z "$real" ]; then
+          ort=$(find /app/onnxruntime -name 'libonnxruntime.so.*' -type f 2>/dev/null | head -1 || true)
+          if [ -n "$ort" ]; then cp -a "$ort" .; real=$(basename "$ort"); fi
+        fi
+        if [ -n "$real" ]; then ln -sf "$real" libonnxruntime.so.1; ln -sf "$real" libonnxruntime.so; fi
+        ls -l libonnxruntime.so* 2>/dev/null || echo no-onnx-in-bundle
+      # Flutter 的 linux 产物按 $ORIGIN/lib 找插件库、按 $ORIGIN/data 找资源（flutter_assets），
+      # 所以整份 bundle 必须原样落在同一目录；/app/bin 只放一个转发脚本，否则启动即 127。
+      - cp -a build/linux/x64/release/bundle/. /app/lib/venera-unified/
+      - |
+        mkdir -p /app/bin
+        # 插件的 DT_NEEDED（如 libonnxruntime.so.1）没有 $ORIGIN rpath，dlopen 时只认 LD_LIBRARY_PATH；
+        # 启动脚本把自己那份 lib 目录拼到前面，同时保留 flatpak 自己注入的路径。
+        printf '#!/bin/sh\nexport LD_LIBRARY_PATH="/app/lib/venera-unified/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"\nexec /app/lib/venera-unified/venera-unified "$@"\n' > /app/bin/venera-unified
+        chmod +x /app/bin/venera-unified
+      # Flathub 上架用元数据：desktop 文件、图标与 AppStream metainfo。
+      # debian/gui 下的是 deb 模板（缺 Exec、Icon 是裸名），这里按 flatpak 安装形态落盘。
+      - |
+        mkdir -p /app/share/applications /app/share/icons/hicolor/256x256/apps /app/share/metainfo
+        sed -e 's|^Icon=.*|Icon=io.github.venera.unified|' -e 's|^Comment=.*|Comment=Comic reader|' debian/gui/venera-unified.desktop > /app/share/applications/io.github.venera.unified.desktop
+        printf 'Exec=venera-unified %%U\n' >> /app/share/applications/io.github.venera.unified.desktop
+        install -m644 debian/gui/venera-unified.png /app/share/icons/hicolor/256x256/apps/io.github.venera.unified.png
+        install -m644 flatpak/io.github.venera.unified.metainfo.xml /app/share/metainfo/
+    sources:
+      - type: git
+        url: https://github.com/ACGNnsj/venera-unified.git
+        tag: v1.21.1
+      - type: archive
+        url: https://github.com/ACGNnsj/venera-unified/releases/download/v1.21.1/pub-cache-v1.21.1.tar.gz
+        sha256: c8803e057d4499366b00e5624dafac997193b4a413047bfd6f1f5de19c25ff8c
+      - type: archive
+        url: https://github.com/ACGNnsj/venera-unified/releases/download/v1.21.1/cargo-vendor-v1.21.1.tar.gz
+        sha256: 3951f3e835e70d6f14f673c57dcbee4b67a22b265610662aa2316d53d922e0e5
