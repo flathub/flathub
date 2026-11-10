@@ -1,0 +1,61 @@
+# Manifeste Flatpak pour Andromede — usage local uniquement
+# À enregistrer sous : net.andromede.Andromede.yml
+# Test : flatpak-builder --force-clean --user --install-deps-from=flathub \
+#         build-dir net.andromede.Andromede.yml
+# Puis :  flatpak-builder --run build-dir net.andromede.Andromede.yml andromede
+#
+# Note Flathub : une soumission réelle d'un binaire tiers se ferait en
+# extra-data + script apply_extra exécuté à l'installation (les fichiers
+# arrivent alors dans /app/extra), avec .desktop, icônes et fiche AppStream
+# fournis par des sources séparées disponibles dès la construction — voir le
+# manifeste Slack. Ici, type: file télécharge le .deb pendant le build,
+# ce qui suffit pour un essai local.
+
+id: net.andromede.Andromede
+runtime: org.freedesktop.Platform        # L'app ne dépend que de bibliotheques
+runtime-version: "26.08"                 # de base : le runtime freedesktop suffit
+sdk: org.freedesktop.Sdk
+command: andromede                       # Le binaire atterrit dans /app/bin
+
+finish-args:
+  - --share=ipc                          # Requis pour X11
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri                         # Accélération GPU
+  - --socket=pulseaudio                  # Son : ALSA est redirigé vers PulseAudio par le runtime
+  - --talk-name=org.freedesktop.Notifications   # notify-rust : service D-Bus des notifications
+  - --talk-name=org.kde.StatusNotifierWatcher  # ksni : icône de zone de notification
+  - --share=network                      # Requis : l'application ne fonctionne pas hors ligne
+
+# Le sélecteur de fichiers (rfd/xdg-portal) et les liens (xdg-open) passent
+# par les portails : aucun --filesystem ni --talk-name supplémentaire requis.
+
+cleanup:
+  - /share/doc
+  - /share/man
+  - /share/lintian
+
+modules:
+  - name: andromede
+    buildsystem: simple
+    only-arches:
+      - x86_64                           # Le .deb n'existe qu'en x86_64
+    # Le .deb fournit déjà /usr/bin/andromede, net.andromede.Andromede.desktop,
+    # les icônes et la fiche AppStream. Les chemins de l'archive commencent
+    # par ./usr/ : on retire deux niveaux pour reloger /usr vers /app.
+    build-commands:
+      - ar -x andromede.deb
+      - tar -xf data.tar.* -C /app --strip-components=2
+    sources:
+      # Téléchargé au moment du build (contrairement à extra-data,
+      # qui ne l'est qu'à l'installation chez l'utilisateur).
+      - type: file
+        only-arches:
+          - x86_64
+        url: https://www.andromede.net/telechargement/linux/andromede_0.1.0_amd64.deb
+        sha256: 22755da6be749bc6a7761ead4a9ecc6f5ff9ea4df9b4b6b18da6d5ce53fc4d04
+        dest-filename: andromede.deb
+      # Pour suivre automatiquement les versions, il faudrait un checker du
+      # bot Flathub adapté au site (Anitya, ou une page de téléchargement).
+      # NB: rotating-url désigne une adresse FIXE qui redirige vers la
+      # dernière version — pas un modèle contenant ${version}.
