@@ -8,6 +8,7 @@ fi
 
 export GDK_BACKEND=wayland,x11
 export SKIKO_RENDER_API=OPENGL
+export LD_LIBRARY_PATH="/app/lib/zeravrix:${LD_LIBRARY_PATH:-}"
 
 exec "$JAVA_EXEC" \
     -Xms128m \
@@ -15,6 +16,8 @@ exec "$JAVA_EXEC" \
     -XX:+UseG1GC \
     -XX:+UseStringDeduplication \
     -XX:MaxGCPauseMillis=20 \
+    -Djava.library.path=/app/lib/zeravrix \
+    -Dskiko.library.path=/app/lib/zeravrix \
     -Dskiko.renderApi=OPENGL \
     -Dskiko.linux.autodetect=true \
     -Dawt.useSystemAAFontSettings=on \
