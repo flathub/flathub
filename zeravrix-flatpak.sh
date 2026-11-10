@@ -3,8 +3,8 @@
 # Optimized for sandbox security, Wayland/X11 compatibility, and hardware acceleration
 set -e
 
-# Java runtime bundled via Flatpak SDK extension
-JAVA_EXEC="/usr/lib/sdk/openjdk21/bin/java"
+# Java runtime bundled via Flatpak OpenJDK extension
+JAVA_EXEC="/app/jre/bin/java"
 if [ ! -f "$JAVA_EXEC" ]; then
     JAVA_EXEC="java"
 fi
