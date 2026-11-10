@@ -1,19 +1,14 @@
 #!/bin/bash
-# ZERAVRIX Flatpak Launcher
-# Optimized for sandbox security, Wayland/X11 compatibility, and hardware acceleration
 set -e
 
-# Java runtime bundled via Flatpak OpenJDK extension
 JAVA_EXEC="/app/jre/bin/java"
 if [ ! -f "$JAVA_EXEC" ]; then
     JAVA_EXEC="java"
 fi
 
-# Detect Wayland or X11 and set appropriate Skiko options
 export GDK_BACKEND=wayland,x11
 export SKIKO_RENDER_API=OPENGL
 
-# Execute with strictly bounded memory footprint and G1GC
 exec "$JAVA_EXEC" \
     -Xms128m \
     -Xmx768m \
