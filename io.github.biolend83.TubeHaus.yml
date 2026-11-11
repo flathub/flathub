@@ -1,0 +1,138 @@
+# TubeHaus: the desktop app from its own release (built by the project's CI, with its own Java
+# runtime inside) and the libmpv it plays with, built here from source.
+# Upstream: https://github.com/biolend83/tubehaus (branch android-app, packaging/flatpak)
+id: io.github.biolend83.TubeHaus
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: tubehaus
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  # the window is AWT (Compose for Desktop), which speaks X11 (XWayland on Wayland)
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=dri
+  # saving a video or a transcript where you choose
+  - --filesystem=xdg-download
+  - --env=LC_NUMERIC=C
+
+cleanup:
+  - '*.la'
+  - '*.a'
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - /share/doc
+
+modules:
+  - name: libass
+    config-opts:
+      - --disable-static
+      - --enable-asm
+      - --enable-harfbuzz
+      - --enable-fontconfig
+    sources:
+      - type: git
+        url: https://github.com/libass/libass.git
+        tag: 0.17.5
+        commit: 4a05d8127f525943ebf45fdc6497c9e665947f0d
+
+  # YouTube's formats only: VP9 and AV1 (dav1d), H.264 (built in), Opus and AAC (built in)
+  - name: ffmpeg
+    config-opts:
+      - --disable-debug
+      - --disable-doc
+      - --disable-static
+      - --disable-programs
+      - --enable-shared
+      - --enable-gnutls
+      - --enable-libdav1d
+      - --enable-libvpx
+      - --enable-libopus
+      - --enable-libass
+      - --enable-libfreetype
+      - --enable-vaapi
+      - --enable-libdrm
+    cleanup:
+      - /share/ffmpeg
+    sources:
+      - type: git
+        url: https://git.ffmpeg.org/ffmpeg.git
+        tag: n9.0.2
+        commit: 946fcce07b6dcd0331c8cc609192aeff5e1924f8
+
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Dvulkan=disabled
+      - -Dshaderc=disabled
+      - -Ddemos=false
+      - -Dtests=false
+    sources:
+      - type: git
+        url: https://code.videolan.org/videolan/libplacebo.git
+        tag: v7.387.0
+        commit: 275f7dea27924cdd34ab2e6c20e448b6bc4fab65
+
+  - name: mpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dbuild-date=false
+      - -Dwerror=false
+      - -Dlua=disabled
+      - -Djavascript=disabled
+      - -Dpulse=enabled
+      - -Dpipewire=enabled
+      - -Dalsa=enabled
+      - -Dvaapi=enabled
+      - -Dmanpage-build=disabled
+      - -Dhtml-build=disabled
+    sources:
+      - type: git
+        url: https://github.com/mpv-player/mpv.git
+        tag: v0.42.0
+        commit: b0841e8c4d156b8403dc1876c4cbd9011eb583f3
+
+  - name: tubehaus
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/tubehaus /app/bin
+      - cp -a app/. /app/tubehaus/
+      - install -Dm755 tubehaus.sh /app/bin/tubehaus
+      - install -Dm644 io.github.biolend83.TubeHaus.desktop /app/share/applications/io.github.biolend83.TubeHaus.desktop
+      - install -Dm644 io.github.biolend83.TubeHaus.metainfo.xml /app/share/metainfo/io.github.biolend83.TubeHaus.metainfo.xml
+      - install -Dm644 icon.png /app/share/icons/hicolor/512x512/apps/io.github.biolend83.TubeHaus.png
+    sources:
+      # the release's Linux build (bin/, lib/ with the Java runtime); the top folder TubeHaus/ is stripped
+      - type: archive
+        url: https://github.com/biolend83/tubehaus/releases/download/app-v1.0.6/TubeHaus-1.0.6-linux-x64.tar.gz
+        sha256: 7d78ffa579b2b4facd5f32a3c1039f792513c6679efe0705913b1a674b33364a
+        dest: app
+        only-arches: [x86_64]
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/biolend83/tubehaus/releases/latest
+          version-query: .tag_name | sub("^app-v"; "")
+          url-query: .assets[] | select(.name | test("-linux-x64\\.tar\\.gz$")) | .browser_download_url
+      - type: archive
+        url: https://github.com/biolend83/tubehaus/releases/download/app-v1.0.6/TubeHaus-1.0.6-linux-arm64.tar.gz
+        sha256: 575767fc8511c46e915931ad47383a7eeeaf52b978ccd7fdadd4c1072c609b8e
+        dest: app
+        only-arches: [aarch64]
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/biolend83/tubehaus/releases/latest
+          version-query: .tag_name | sub("^app-v"; "")
+          url-query: .assets[] | select(.name | test("-linux-arm64\\.tar\\.gz$")) | .browser_download_url
+      - type: file
+        path: tubehaus.sh
+      - type: file
+        path: io.github.biolend83.TubeHaus.desktop
+      - type: file
+        path: io.github.biolend83.TubeHaus.metainfo.xml
+      - type: file
+        path: icon.png
