@@ -1,0 +1,55 @@
+# Flatpak manifest for the MEGGA launcher (Flathub: github.com/flathub/app.megga.Launcher).
+# It repackages the official Linux build published at repo.megga.app/launcher.
+# `npm run release` (or `npm run flatpak:update`) fills in the tarball url + sha256 below.
+id: app.megga.Launcher
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '26.08'
+command: megga-launcher
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  # GPU acceleration, webcam/microphone for calls, and game controllers.
+  - --device=all
+  # Tray icon and desktop notifications.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  - name: megga-launcher
+    buildsystem: simple
+    build-commands:
+      - cp -a megga /app/megga
+      # Chromium's setuid sandbox can't work in Flatpak; zypak provides the sandbox instead.
+      - rm -f /app/megga/chrome-sandbox
+      - install -Dm755 megga-launcher.sh /app/bin/megga-launcher
+      - install -Dm644 app.megga.Launcher.desktop -t /app/share/applications
+      - install -Dm644 app.megga.Launcher.metainfo.xml -t /app/share/metainfo
+      - |
+        for size in 16 24 32 48 64 128 256 512; do
+          install -Dm644 /app/megga/resources/icons/${size}x${size}.png \
+            /app/share/icons/hicolor/${size}x${size}/apps/app.megga.Launcher.png
+        done
+    sources:
+      - type: archive
+        url: https://repo.megga.app/launcher/megga-0.7.6.tar.gz
+        sha256: 'b00128efb44c43bd803782c3db8216171880fa167b21941bcec636a354493caa'
+        dest: megga
+        only-arches:
+          - x86_64
+      - type: script
+        dest-filename: megga-launcher.sh
+        commands:
+          - export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
+          - exec zypak-wrapper /app/megga/megga "$@"
+      - type: file
+        path: app.megga.Launcher.desktop
+      - type: file
+        path: app.megga.Launcher.metainfo.xml
