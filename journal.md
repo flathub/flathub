@@ -1,3 +1,10 @@
+## [2026-11-10] 設法改成 x11 與 wayland 並行， fallback-x11 會失敗
+1. Try to use 
+--socket=x11
+--socket=wayland
+instead of fallback-x11 which will cause the webview fail and misposition of the toast window.
+2. Put the screenshuts into release assets on GitHub.
+
 ## [2026-11-09] 在跟 Copilot 與 Gemini 討論後，發現 flatpak 原來原生有提供 gstreamer 可以使用，因此，只須 Process.Start.... 即可
 
 ## [2026-11-07] 改用 ManagedBass 代替 VLC與去除多餘的套件
