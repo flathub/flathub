@@ -1,0 +1,101 @@
+# Flathub recipe for Glitch Softphone: https://github.com/straytripod/GlitchSoftphone
+#
+# Built on Flathub's PySide6 base app, which brings Qt's Python bindings
+# (built from source by Flathub) on the KDE runtime. The runtime already has
+# Python, Qt, OpenSSL, Opus, ALSA with its PipeWire plugin, pw-dump, gdbus and
+# ffmpeg, so only PJSIP and the app itself go in here. Every download is
+# pinned by its SHA-256 sum, and the build runs without network access.
+id: io.github.straytripod.GlitchSoftphone
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: '6.11'
+command: glitch-softphone
+build-options:
+  env:
+    # Tell the base app's cleanup script to drop what we don't use: the web
+    # engine (with its Kerberos libraries) and numpy.
+    BASEAPP_REMOVE_WEBENGINE: '1'
+    BASEAPP_DISABLE_NUMPY: '1'
+
+finish-args:
+  # Show the window (Wayland, or X11 where there's no Wayland)
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # SIP and RTP to the PBX, and the PBX's web server for names and lamps
+  - --share=network
+  # Audio: PipeWire directly (the app pins headset and ringer to PipeWire
+  # devices), plus the PulseAudio socket as a fallback
+  - --socket=pulseaudio
+  - --filesystem=xdg-run/pipewire-0
+  # Desktop notifications for incoming calls
+  - --talk-name=org.freedesktop.Notifications
+  # Tray icon: the panel's watcher, and the name Qt gives the icon
+  # (the app is process 2 inside the sandbox)
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --own-name=org.kde.StatusNotifierItem-2-1
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+  # The base app's own store entry: only ours belongs in the app.
+  - rm -f /app/share/metainfo/io.qt.PySide.BaseApp.metainfo.xml
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - '*.a'
+
+modules:
+  # Only needed to generate PJSIP's Python bindings; removed afterwards.
+  - name: swig
+    cleanup: ['*']
+    config-opts:
+      - --without-boost
+    sources:
+      - type: archive
+        url: https://downloads.sourceforge.net/project/swig/swig/swig-4.3.1/swig-4.3.1.tar.gz
+        sha256: 44fc829f70f1e17d635a2b4d69acab38896699ecc24aa023e516e0eabbec61b8
+
+  # SIP and audio engine, same options as scripts/build-pjsip.sh (audio only).
+  # PJSIP's own libraries are linked statically into the Python module.
+  - name: pjsua2
+    buildsystem: simple
+    build-commands:
+      - echo '#define PJMEDIA_HAS_VIDEO 0' > pjlib/include/pj/config_site.h
+      - ./configure CFLAGS="-O2 -fPIC" CXXFLAGS="-O2 -fPIC"
+          --disable-video --disable-sdl --disable-ffmpeg --disable-v4l2
+          --disable-openh264 --disable-vpx --disable-libyuv --disable-upnp
+      - make dep
+      - make -j"$FLATPAK_BUILDER_N_JOBS"
+      - make -C pjsip-apps/src/swig/python
+      - pip3 install --prefix=/app --no-deps --no-index --no-build-isolation
+          pjsip-apps/src/swig/python
+    sources:
+      - type: archive
+        url: https://github.com/pjsip/pjproject/archive/refs/tags/2.17.tar.gz
+        sha256: 065fe06c06788d97c35f563796d59f00ce52fe9558a52d7b490a042a966facce
+
+  - name: glitch-softphone
+    buildsystem: simple
+    build-commands:
+      - |
+        SITE="$(python3 -c 'import sysconfig; print(sysconfig.get_path("purelib", vars={"base": "/app"}))')"
+        cp -r app "$SITE/app"
+        python3 -m compileall -q "$SITE/app"
+      - install -Dm755 glitch-softphone.sh /app/bin/glitch-softphone
+      - install -Dm644 -t /app/share/applications packaging/${FLATPAK_ID}.desktop
+      - install -Dm644 -t /app/share/metainfo packaging/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 -t /app/share/icons/hicolor/256x256/apps packaging/${FLATPAK_ID}.png
+    sources:
+      - type: git
+        url: https://github.com/straytripod/GlitchSoftphone.git
+        tag: v0.1.3
+        commit: 381eacaf4db003f944c9895a17a9d0179a5208a7
+      - type: script
+        dest-filename: glitch-softphone.sh
+        commands:
+          - exec python3 -m app.main "$@"
