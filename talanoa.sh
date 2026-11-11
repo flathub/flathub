@@ -1,2 +1,3 @@
 #!/bin/sh
-exec /app/Talanoa-linux-x64/Talanoa "$@"
+export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
+exec zypak-wrapper /app/talanoa/Talanoa "$@"
