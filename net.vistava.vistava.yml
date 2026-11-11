@@ -1,0 +1,77 @@
+app-id: net.vistava.vistava
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: run.sh
+base: org.electronjs.Electron2.BaseApp
+base-version: '26.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node26
+  - org.freedesktop.Sdk.Extension.dotnet10
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    version: '26.08'
+    directory: lib
+    add-ld-path: .
+separate-locales: false
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --share=ipc
+  - --share=network
+  - --device=dri
+  - --device=input
+  - --filesystem=home:ro
+  - --filesystem=/run/udev:ro
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+  - --env=DOTNET_ROOT=/app/lib/dotnet
+  - --require-version=1.18.0
+build-options:
+  prepend-path: "/usr/lib/sdk/dotnet10/bin"
+  append-ld-library-path: "/usr/lib/sdk/dotnet10/lib"
+  prepend-pkg-config-path: "/usr/lib/sdk/dotnet10/lib/pkgconfig"
+  cflags: -O2 -g
+  cxxflags: -O2 -g
+  append-path: /usr/lib/sdk/node26/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
+modules:
+  - name: dotnet
+    buildsystem: simple
+    build-commands:
+    - /usr/lib/sdk/dotnet10/bin/install.sh
+
+  - name: vistava
+    buildsystem: simple
+    build-options:
+      env:
+        XDG_CACHE_HOME: /run/build/vistava/flatpak-node/cache
+        npm_config_cache: /run/build/vistava/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+    build-commands:
+      - npm install --offline
+      - |
+        . ../flatpak-node/electron-builder-arch-args.sh
+        export PREBUILD_ARGS="--source ../nuget-sources"
+        npm run build:linux -- $ELECTRON_BUILDER_ARCH_ARGS
+      - cp -a dist/linux*unpacked /app/main
+      - install -Dm755 -t /app/bin/ ../run.sh
+      - install -Dm644 build/flatpak/net.vistava.vistava.metainfo.xml /app/share/metainfo/net.vistava.vistava.metainfo.xml
+      - install -Dm644 build/flatpak/net.vistava.vistava.desktop /app/share/applications/net.vistava.vistava.desktop
+      - install -Dm644 build/icons/icon.svg /app/share/icons/hicolor/scalable/apps/net.vistava.vistava.svg
+    subdir: main
+    sources:
+      - type: git
+        url: https://github.com/bauermaximilian/Vistava
+        commit: v1.0.0
+        dest: main
+      - npm-sources.json
+      - nuget-sources.json
+      - type: script
+        commands:
+          - zypak-wrapper.sh /app/main/vistava "$@"
+        dest-filename: run.sh
