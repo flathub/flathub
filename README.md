@@ -10,9 +10,9 @@ Point the manifest at a Mortar release tag and regenerate the offline sources:
 ./scripts/regen-sources.sh vX.Y.Z
 ```
 
-The script fetches that tag's `go.mod`/`go.sum` and lockfile from
-Rethunk-Tech/mortar, runs `flatpak-go-mod` and `flatpak-node-generator` (via
-`uvx` or `bunx`), writes `go-sources.json` and `node-sources.json`, and updates
-the git tag and commit in `tech.rethunk.Mortar.yml`.
+The script clones that tag and runs the `build/linux/flathub/render.sh` it ships, then copies the manifest,
+`go-sources.json`, `node-sources.json` and `yarn.lock` it writes over the ones here. It needs network, go, bun, jq
+and uvx. Run against v0.6.0 it reproduces the manifest, `go-sources.json` and `node-sources.json`
+byte for byte; `yarn.lock` differs only in its `# bun ./bun.lockb --hash` comment, which newer bun writes as zeros.
 
 Commit those files and open the Flathub pull request.
