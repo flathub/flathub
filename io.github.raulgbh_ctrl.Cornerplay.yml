@@ -1,0 +1,156 @@
+# Cornerplay on Flathub (made by packaging/flathub/make-manifest.sh from packaging/flatpak).
+#
+#   packaging/flatpak/build.sh            (a local install)
+#   packaging/flatpak/build.sh --bundle   (also dist/cornerplay.flatpak, a single file to share)
+id: io.github.raulgbh_ctrl.Cornerplay
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp      # PySide6 with Qt WebEngine (store sign-in) and Qt Multimedia (trailers)
+base-version: '6.10'
+command: cornerplay
+separate-locales: false
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=all                  # controllers and the GPU
+  - --allow=multiarch             # 32-bit Windows games through Proton
+  - --allow=devel                 # Wine needs ptrace-style debugging calls
+  - --allow=per-app-dev-shm       # the Steam Linux Runtime that umu runs Proton in
+  # Steam is a program on the host: Cornerplay starts it, closes and reopens it around
+  # changes to its settings, and checks whether it is running (flatpak-spawn --host).
+  - --talk-name=org.freedesktop.Flatpak
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=com.feralinteractive.GameMode
+  - --system-talk-name=org.freedesktop.UPower   # battery level in TV mode, overnight updates only on mains
+  # Steam's files: the library, its artwork cache, its Proton builds, non-Steam shortcuts.
+  - --filesystem=~/.local/share/Steam
+  - --filesystem=~/.steam
+  - --filesystem=~/.var/app/com.valvesoftware.Steam
+  # Where games install (Settings can point elsewhere: grant that folder with Flatseal).
+  - --filesystem=~/Games:create
+  # umu keeps the Steam Linux Runtime here (shared with umu on the host: downloaded once).
+  - --filesystem=xdg-data/umu:create
+  # Proton builds and installed games from other launchers, found and imported, never changed.
+  - --filesystem=xdg-config/heroic:ro
+  - --filesystem=~/.var/app/com.heroicgameslauncher.hgl:ro
+  - --filesystem=xdg-data/lutris:ro
+  - --filesystem=xdg-config/MangoHud:ro
+  # RetroArch from Flathub keeps its cores here (retro games; RetroArch itself runs on the host).
+  - --filesystem=~/.var/app/org.libretro.RetroArch:ro
+  # Discord Rich Presence: the desktop Discord app's local socket (native, Flatpak Discord, Vesktop).
+  - --filesystem=xdg-run/discord-ipc-0
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
+  - --filesystem=xdg-run/app/dev.vencord.Vesktop:create
+  - --env=PATH=/app/bin:/app/utils/bin:/usr/bin:/usr/lib/extensions/vulkan/gamescope/bin:/usr/lib/extensions/vulkan/MangoHud/bin
+
+add-extensions:
+  org.freedesktop.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: '25.08'
+  org.freedesktop.Platform.GL32:
+    directory: lib/i386-linux-gnu/GL
+    version: '1.4'
+    versions: 25.08;1.4
+    subdirectories: true
+    no-autodownload: true
+    autodelete: false
+    add-ld-path: lib
+    merge-dirs: vulkan/icd.d;glvnd/egl_vendor.d;egl/egl_external_platform.d;OpenCL/vendors;lib/dri;lib/d3d;lib/gbm;vulkan/explicit_layer.d;vulkan/implicit_layer.d
+    download-if: active-gl-driver
+    enable-if: active-gl-driver
+    autoprune-unless: active-gl-driver
+  # gamescope and MangoHud, when installed from Flathub
+  # (flatpak install org.freedesktop.Platform.VulkanLayer.gamescope//25.08 ...MangoHud//25.08).
+  org.freedesktop.Platform.VulkanLayer:
+    directory: lib/extensions/vulkan
+    version: '25.08'
+    subdirectories: true
+    no-autodownload: true
+    add-ld-path: lib
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh        # keeps Qt WebEngine: the store sign-in windows need it
+
+modules:
+  - name: platform-bootstrap
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/i386-linux-gnu/GL /app/lib/extensions/vulkan
+      - install -Dm644 ld.so.conf /app/etc/ld.so.conf.d/cornerplay-i386.conf
+    sources:
+      - type: inline
+        dest-filename: ld.so.conf
+        contents: |
+          /app/lib/i386-linux-gnu
+          /app/lib/i386-linux-gnu/GL/default/lib
+
+  - name: python-deps
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --no-build-isolation --find-links=. --prefix=/app requests pyyaml
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/a0/f4/c67b0b3f1b9245e8d266f0f112c500d50e5b4e83cb6f3b71b6528104182a/requests-2.34.2-py3-none-any.whl
+        sha256: 2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0
+      - type: file
+        url: https://files.pythonhosted.org/packages/92/9d/c4e665119135114480843e7ab388fa94d8480650450e6f8e26b70d323a4c/urllib3-2.8.0-py3-none-any.whl
+        sha256: 0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3
+      - type: file
+        url: https://files.pythonhosted.org/packages/58/a2/bb081bab032533a855d44de1d56f8e8426114ff1ba5d1f07a438a0a654f8/idna-3.20-py3-none-any.whl
+        sha256: ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c
+      - type: file
+        url: https://files.pythonhosted.org/packages/32/d1/a3652fe2c19134d0d15922177821d863cbd7e842d53a21bbe7e8e3a1b5ac/certifi-2026.10.23-py3-none-any.whl
+        sha256: e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1
+      - type: file
+        url: https://files.pythonhosted.org/packages/fc/ad/d07d7862a62ffa6d79d68074d14823243dd235a77c45262acbf6adeb28bf/charset_normalizer-3.5.2-py3-none-any.whl
+        sha256: b6b751274acb69d77b3323d6b7dbaa3c7fdfc1eb829b7eb61d262f32e1af9685
+      - type: file
+        url: https://files.pythonhosted.org/packages/05/8e/961c0007c59b8dd7729d542c61a4d537767a59645b82a0b521206e1e25c2/pyyaml-6.0.3.tar.gz
+        sha256: d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f
+
+  # The store tools and umu-launcher. Cornerplay looks in its own data folder first, so
+  # `cornerplay --fetch-backends` can still bring newer ones between Flatpak updates.
+  - name: backends
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 legendary_linux_x86_64 /app/lib/cornerplay/backends/legendary
+      - install -Dm755 gogdl_linux_x86_64 /app/lib/cornerplay/backends/gogdl
+      - install -Dm755 nile_linux_x86_64 /app/lib/cornerplay/backends/nile
+      - tar -xf umu-launcher-zipapp.tar && install -Dm755 umu/umu-run /app/lib/cornerplay/backends/umu-run
+    sources:
+      - type: file
+        url: https://github.com/Heroic-Games-Launcher/legendary/releases/download/0.20.43/legendary_linux_x86_64
+        sha256: 2b82497051afd95670994146e6038d6e1c98a1c60c21949def668b52aef7d3f7
+      - type: file
+        url: https://github.com/Heroic-Games-Launcher/heroic-gogdl/releases/download/v1.4.0/gogdl_linux_x86_64
+        sha256: 2aa2b59c83d3bfbe7b60ead91c6297b263b5d1e6c233a04b7409bafe26738f02
+      - type: file
+        url: https://github.com/imLinguin/nile/releases/download/v1.2.0/nile_linux_x86_64
+        sha256: d73519514df9d52c50c6feec629373cc3a0d9504e087b6c7372a8ca8a95e7bfe
+      - type: file
+        url: https://github.com/Open-Wine-Components/umu-launcher/releases/download/1.4.4/umu-launcher-1.4.4-zipapp.tar
+        sha256: eb590691841f7fad3fc3ad8fd5db4ccb87849fe7948e62b28ece7a4ee48cc851
+        dest-filename: umu-launcher-zipapp.tar
+
+  - name: cornerplay
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/cornerplay
+      - cp -r cornerplay /app/lib/cornerplay/
+      - find /app/lib/cornerplay/cornerplay -name __pycache__ -prune -exec rm -rf {} +
+      - python3 -m compileall -q /app/lib/cornerplay/cornerplay
+      - install -Dm755 packaging/flatpak/cornerplay.sh /app/bin/cornerplay
+      - install -Dm644 packaging/flatpak/${FLATPAK_ID}.desktop -t /app/share/applications
+      - install -Dm644 packaging/flatpak/${FLATPAK_ID}.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 cornerplay/cornerplay.svg /app/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+      - for s in 16 24 32 48 64 128 256 512; do install -Dm644 cornerplay/icons/app/cornerplay-$s.png /app/share/icons/hicolor/${s}x${s}/apps/${FLATPAK_ID}.png; done
+    sources:
+      - type: git
+        url: https://github.com/raulgbh-ctrl/cornerplay.git
+        tag: v0.9.0
+        commit: c71900244983c7c117ad7af09e35640236094215
