@@ -1,0 +1,71 @@
+id: app.chunker.chunker
+runtime: org.freedesktop.Platform
+runtime-version: "26.08"
+base: "org.electronjs.Electron2.BaseApp"
+base-version: "26.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - "org.freedesktop.Sdk.Extension.openjdk17"
+  - "org.freedesktop.Sdk.Extension.node24"
+command: app.chunker.chunker
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  - --env=ELECTRON_TRASH=gio
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+  - --env=PATH=/app/jre/bin:/app/bin:/usr/bin
+  - --env=JAVA_HOME=/app/jre
+modules:
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - "/usr/lib/sdk/openjdk17/install.sh"
+      - "/usr/lib/sdk/node24/enable.sh"
+  - name: chunker
+    buildsystem: simple
+    build-options:
+     env:
+        PATH: /app/bin:/usr/bin:/usr/lib/sdk/node24/bin:/usr/lib/sdk/openjdk17/bin
+        JAVA_HOME: /usr/lib/sdk/openjdk17/jvm/openjdk-17
+        XDG_CACHE_HOME: /run/build/chunker/flatpak-node/cache
+    build-commands:
+      - "chmod +x ./gradlew"
+      - "./gradlew build --no-daemon --offline --console=plain"
+      - "mkdir -p /app/chunker"
+      - "cp -r build/libs/linux/linux-unpacked/* /app/chunker"
+      - "patch-electron-desktop-filename /app/chunker/resources/app.asar"
+      - "chmod +x /app/chunker/chunker-electron"
+      - "chmod +x /app/chunker/resources/chunker-cli/bin/chunker-cli"
+      - "install -Dm755 chunker.sh /app/bin/${FLATPAK_ID}"
+      - "install -Dm644 /app/chunker/resources/flathub/${FLATPAK_ID}.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml"
+      - "install -Dm644 /app/chunker/resources/flathub/${FLATPAK_ID}.desktop /app/share/applications/${FLATPAK_ID}.desktop"
+      - "install -Dm644 /app/chunker/resources/flathub/logo.png /app/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png"
+    sources:
+      - type: git
+        url: https://github.com/HiveGamesOSS/Chunker
+        tag: 1.21.0
+        commit: 50aaf6d82e8b68929279161b790d95fdddfe0a40
+        x-checker-data:
+          - type: git
+            version-scheme: semantic
+      - type: file
+        path: chunker.sh
+      - type: patch
+        paths:
+          - patches/001-setup-flatpak-gradle-generator.patch
+          - patches/002-use-v2-npm-lockfile.patch
+          - patches/003-use-sdk-node-version.patch
+          - patches/004-enable-addons-rebuild.patch
+          - patches/005-build-dir-target-only.patch
+          - patches/006-set-npm-cache-path.patch
+          - patches/007-disable-electron-checksum-verification.patch
+      - type: file
+        url: "https://services.gradle.org/distributions/gradle-9.8.0-bin.zip"
+        sha256: "bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c"
+        dest: "gradle/wrapper"
+        dest-filename: "gradle-bin.zip"
+      - cli-dependencies-sources.json
+      - app-dependencies-sources.json
+      - npm-dependencies-sources.json
