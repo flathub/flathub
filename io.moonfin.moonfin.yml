@@ -1,0 +1,80 @@
+app-id: io.moonfin.moonfin
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.llvm23
+
+command: moonfin
+
+finish-args:
+  - --share=network
+  - --socket=fallback-x11
+  - --share=ipc
+  - --socket=wayland
+  - --device=all
+  - --socket=pulseaudio
+  # MPRIS media controls
+  - --own-name=org.mpris.MediaPlayer2.moonfin
+  # Saved logins (flutter_secure_storage via libsecret)
+  - --talk-name=org.freedesktop.secrets
+  # Keep the screen awake during playback (wakelock_plus)
+  - --talk-name=org.freedesktop.ScreenSaver
+  # Desktop notifications (flutter_local_notifications)
+  - --talk-name=org.freedesktop.Notifications
+  # Online/offline detection (connectivity_plus)
+  - --system-talk-name=org.freedesktop.NetworkManager
+  - --filesystem=xdg-documents/Moonfin:ro
+
+modules:
+  - name: moonfin
+    buildsystem: simple
+    build-options:
+      #build-args:
+      #  - --share=network
+      append-path: /usr/lib/sdk/llvm23/bin:/var/lib/flutter/bin
+      env:
+        CC: clang
+        CXX: clang++
+        PUB_CACHE: /run/build/moonfin/.pub-cache
+    build-commands:
+      - mkdir -p /app/bin /app/moonfin /app/share/applications /app/share/metainfo /app/share/icons/hicolor/512x512/apps
+      - flutter build linux --release --no-pub --dart-define=DISTRIBUTION_CHANNEL=linux
+      #- flutter build linux --release --dart-define=DISTRIBUTION_CHANNEL=linux --verbose
+      - ./build_for_flathub.sh
+      - cp -r . /app/moonfin/
+      - |
+        cat > /app/bin/moonfin << 'EOFRUN'
+        #!/bin/sh
+        # The moonfin script finds its libraries next to itself, so call it by its real path rather than a symlink.
+        exec /app/moonfin/moonfin "$@"
+        EOFRUN
+      - chmod +x /app/bin/moonfin
+      - cp io.moonfin.moonfin.png /app/share/icons/hicolor/512x512/apps/
+      - cp io.moonfin.moonfin.desktop /app/share/applications/
+      - cp io.moonfin.moonfin.metainfo.xml /app/share/metainfo/
+    sources:
+      - type: git
+        url: https://github.com/Moonfin-Client/Moonfin-Core.git
+        tag: 3.0.0
+        commit: eb43b626f6f9239e1dd050e529de28702b08038c
+        only-arches:
+          - x86_64
+        x-checker-data:
+          type: git
+          tag-pattern: '^([0-9.]+)$'
+      - type: file
+        path: build_for_flathub.sh
+      - type: file
+        url: https://raw.githubusercontent.com/Moonfin-Client/Moonfin-Core/f4752c9d2eda320d3af28582a39af5a7b584579e/assets/flathub/io.moonfin.moonfin.desktop
+        sha256: 38e8f7b9cea1d7b6e4a5410dfbe1a7963045dfa8da69103d3f9dcf567f8440da
+      - type: file
+        url: https://raw.githubusercontent.com/Moonfin-Client/Moonfin-Core/f4752c9d2eda320d3af28582a39af5a7b584579e/assets/flathub/io.moonfin.moonfin.metainfo.xml
+        sha256: c42fd68abcdf5b5b0d7f08d1174f962a6a9ea3ccb20a5753ba49db86c2545d53
+      - type: file
+        url: https://raw.githubusercontent.com/Moonfin-Client/Moonfin-Core/22e306a2b318ebda48307b55ab1a3e08fabda995/assets/icons/moonfin.png
+        sha256: 7ce97a2c5083b67220a4725329fa2ddc01c5dd9634362c94a6c5f9b853d78991
+        dest-filename: io.moonfin.moonfin.png
+      - generated/sources/pubspec.json
+    modules:
+      - generated/modules/flutter-sdk-3.47.7.json
