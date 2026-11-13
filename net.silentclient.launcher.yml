@@ -1,0 +1,70 @@
+id: net.silentclient.launcher
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+command: silentclient-launcher
+separate-locales: false
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --persist=.minecraft
+  - --persist=.silentclient
+  - --persist=.java
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+modules:
+  - name: silentclient
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 -t ${FLATPAK_DEST}/bin/ apply_extra silentclient-launcher
+      - install -Dm644 -t ${FLATPAK_DEST}/share/applications/ net.silentclient.launcher.desktop
+      - install -Dm644 -t ${FLATPAK_DEST}/share/metainfo/ net.silentclient.launcher.metainfo.xml
+      - install -Dm644 net.silentclient.launcher.png ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png
+    sources:
+      - type: script
+        dest-filename: silentclient-launcher
+        commands:
+          # The launcher updates itself by replacing the AppImage it runs from,
+          # which cannot work on a read-only /app. Without APPIMAGE set it falls
+          # back to its "download the new AppImage yourself" path and leaves the
+          # install alone; updates arrive through Flathub instead.
+          - unset APPIMAGE APPDIR
+          - exec zypak-wrapper /app/extra/silentclient/silentclient-launcher.bin --no-sandbox "$@"
+
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - chmod +x silentclient.AppImage
+          - ./silentclient.AppImage --appimage-extract
+          - mv squashfs-root silentclient
+          - rm -f silentclient.AppImage
+
+      # The universal Linux build has no stable "latest" URL, so the checker
+      # below bumps this from the JSON API (url, sha256 and size all refresh).
+      - type: extra-data
+        only-arches: [x86_64]
+        filename: silentclient.AppImage
+        url: https://cdn.silentclient.net/silentclient-assets/releases/launcher/linux/x64/5.3.1/a93ac3bae484/Silent-Client-5.3.1.AppImage
+        sha256: a93ac3bae48434aa127fbae524d51c1a710a8ef0ffdcdef732745aa221a47528
+        size: 152709122
+        x-checker-data:
+          type: json
+          url: https://api.silentclient.net/branches/releases/download/launcher?platform=linux&arch=x64&format=AppImage
+          version-query: .version
+          url-query: .url
+          is-main-source: true
+
+      - type: file
+        path: net.silentclient.launcher.desktop
+
+      - type: file
+        path: net.silentclient.launcher.metainfo.xml
+
+      - type: file
+        path: net.silentclient.launcher.png
