@@ -1,0 +1,55 @@
+app-id: com.vniverse77.miga
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node24
+command: miga-messenger
+finish-args:
+  # Display: Wayland first, X11 only as fallback.
+  - --socket=wayland
+  - --socket=fallback-x11
+  # Shared memory with the X server (needed by WebKitGTK under X11).
+  - --share=ipc
+  # The messenger talks to its relay over WebSocket.
+  - --share=network
+  # GPU rendering for WebKitGTK.
+  - --device=dri
+modules:
+  - name: miga
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node24/bin
+      env:
+        CARGO_HOME: /run/build/miga/cargo
+        XDG_CACHE_HOME: /run/build/miga/flatpak-node/cache
+        npm_config_cache: /run/build/miga/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+        MIGA_TARGET: desktop
+    build-commands:
+      # 1. Web frontend for the desktop target -> web/build-desktop (embedded by Tauri).
+      - cd web && npm ci --offline --ignore-scripts --no-audit --no-fund && npm run build:desktop
+      # 2. Tauri binary with plain cargo; custom-protocol = serve the bundled assets.
+      - cd desktop/src-tauri && cargo build --offline --release --locked --features tauri/custom-protocol
+      - install -Dm755 desktop/src-tauri/target/release/miga /app/bin/miga-messenger
+      - install -Dm644 packaging/linux/com.vniverse77.miga.desktop /app/share/applications/com.vniverse77.miga.desktop
+      - install -Dm644 desktop/src-tauri/icons/64x64.png /app/share/icons/hicolor/64x64/apps/com.vniverse77.miga.png
+      - install -Dm644 desktop/src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/com.vniverse77.miga.png
+      - install -Dm644 desktop/src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/com.vniverse77.miga.png
+      - install -Dm644 desktop/src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/com.vniverse77.miga.png
+      - install -Dm644 com.vniverse77.miga.metainfo.xml /app/share/metainfo/com.vniverse77.miga.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/Vniverse77/MIGA.git
+        tag: v0.5.0
+        commit: 0b70e0010ee664de7f86d441ebf23a131abbb901
+      # web/ has no committed package-lock.json (the project uses deno.lock): ship one next to the manifest.
+      - type: file
+        path: web-package-lock.json
+        dest: web
+        dest-filename: package-lock.json
+      - type: file
+        path: com.vniverse77.miga.metainfo.xml
+      - cargo-sources.json
+      - node-sources.json
