@@ -1,0 +1,61 @@
+id: io.github.devodrag.GitScope
+runtime: org.gnome.Platform
+runtime-version: "51"
+sdk: org.gnome.Sdk
+add-build-extensions:
+  org.freedesktop.Sdk.Extension.node24:
+    version: "26.08"
+    directory: lib/sdk/node24
+  org.freedesktop.Sdk.Extension.rust-stable:
+    version: "26.08"
+    directory: lib/sdk/rust-stable
+command: gitscope
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --share=network
+  - --talk-name=org.freedesktop.Notifications
+  - --filesystem=~/.local/share/app.gitscope.desktop
+modules:
+  - name: gitscope
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node24/bin:/usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/gitscope/cargo-home
+        CARGO_NET_OFFLINE: "true"
+        GITSCOPE_TEST_BROWSER: ""
+    sources:
+      # Application source at the packaging commit
+      - type: git
+        url: https://github.com/devodrag/GitScope.git
+        commit: f81dcedccfb4c174f9efc0a085afd5b0f36c8687
+      # Vendored Cargo dependencies: flatpak builds are offline, so crates.io
+      # access is unavailable during module builds. The archive contains
+      # vendor/ and .cargo/config.toml and unpacks into src-tauri/.
+      - type: archive
+        url: https://github.com/devodrag/GitScope/releases/download/v0.1.4/gitscope-cargo-vendor-0.1.4.tar.gz
+        sha256: 070611a1748123443240fa987356204262c7a0ec0b5c850f3471a84e7a5a8953
+        dest: src-tauri
+        strip-components: 0
+      # Pre-installed node_modules for the offline npm build (registry access
+      # is unavailable during module builds).
+      - type: archive
+        url: https://github.com/devodrag/GitScope/releases/download/v0.1.4/gitscope-node-vendor-0.1.4.tar.gz
+        sha256: 7ad5a257a8c0078a9f58f61166b6f5b089eb7514348daa08001b9093f8f9fb72
+        strip-components: 0
+    build-commands:
+      - npm run build
+      # cargo discovers .cargo/config.toml from the current directory upward,
+      # so the build must run inside src-tauri for vendored sources to apply
+      - cd src-tauri && cargo build --offline --release
+      - install -Dm755 src-tauri/target/release/gitscope -t /app/bin
+      - install -Dm644 packaging/flatpak/io.github.devodrag.GitScope.metainfo.xml
+        /app/share/metainfo/io.github.devodrag.GitScope.metainfo.xml
+      - install -Dm644 packaging/flatpak/io.github.devodrag.GitScope.desktop
+        /app/share/applications/io.github.devodrag.GitScope.desktop
+      - install -Dm644 src-tauri/icons/128x128.png
+        /app/share/icons/hicolor/128x128/apps/io.github.devodrag.GitScope.png
+      - install -Dm644 LICENSE /app/share/licenses/io.github.devodrag.GitScope/LICENSE
