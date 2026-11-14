@@ -1,0 +1,80 @@
+id: stream.tflix.TFLIX
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '26.08'
+command: tflix
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --socket=pulseaudio
+  # The desktop's cursor themes: the runtime has none, so without this
+  # Chromium falls back to its own tiny cursor
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons
+
+modules:
+  - name: tflix
+    buildsystem: simple
+    sources:
+      # The upstream .deb from the GitHub release. Releases don't always
+      # carry the Linux files, so the checker looks for the newest release
+      # that has them, not just the latest one
+      - type: file
+        only-arches: [x86_64]
+        url: https://github.com/TomasTNunes/tflix/releases/download/linux-v1.3.1/tflix-linux.1.3.1.x64.deb
+        sha256: 3982bd47c212527572f135a76c0c701ffb1767cc44fdfa399ab8b53e4345124a
+        dest-filename: tflix.deb
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/TomasTNunes/tflix/releases
+          version-query: '[.[] | select(.prerelease | not) | .assets[].name | capture("^tflix-linux\\.(?<v>[0-9.]+)\\.x64\\.deb$") | .v] | first'
+          url-query: '[.[] | .assets[] | select(.name == "tflix-linux.\($version).x64.deb") | .browser_download_url] | first'
+      - type: file
+        only-arches: [aarch64]
+        url: https://github.com/TomasTNunes/tflix/releases/download/linux-v1.3.1/tflix-linux.1.3.1.arm64.deb
+        sha256: b9b5c4e29b951681a32a37971346372f0ecf9232ba27f5fe3f5d3f1e82c28610
+        dest-filename: tflix.deb
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/TomasTNunes/tflix/releases
+          version-query: '[.[] | select(.prerelease | not) | .assets[].name | capture("^tflix-linux\\.(?<v>[0-9.]+)\\.arm64\\.deb$") | .v] | first'
+          url-query: '[.[] | .assets[] | select(.name == "tflix-linux.\($version).arm64.deb") | .browser_download_url] | first'
+      # The launcher. zypak-wrapper (from the Electron BaseApp) lets
+      # Chromium's sandbox work inside Flatpak's. CHROME_DESKTOP names the
+      # desktop file, so on Wayland the window gets the TFLIX icon
+      - type: script
+        dest-filename: tflix.sh
+        commands:
+          - export CHROME_DESKTOP=stream.tflix.TFLIX.desktop
+          - exec zypak-wrapper /app/tflix/tflix "$@"
+    build-commands:
+      # The app, from the .deb's /opt/TFLIX. No chrome-sandbox: zypak gives
+      # Chromium its sandbox
+      - ar x tflix.deb
+      - tar -xf data.tar.*
+      - mkdir -p "${FLATPAK_DEST}/tflix"
+      - cp -a opt/TFLIX/. "${FLATPAK_DEST}/tflix/"
+      - rm -rf "${FLATPAK_DEST}/tflix/chrome-sandbox" "${FLATPAK_DEST}/tflix/usr"
+      - install -Dm755 tflix.sh "${FLATPAK_DEST}/bin/tflix"
+      # Icons, renamed to the app ID; PNGs up to 512px
+      - |
+        for dir in usr/share/icons/hicolor/*/apps; do
+          size=$(basename "$(dirname "$dir")")
+          [ "$size" = 1024x1024 ] && continue
+          install -Dm644 "$dir/tflix.png" "${FLATPAK_DEST}/share/icons/hicolor/$size/apps/${FLATPAK_ID}.png"
+        done
+        [ -f "${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png" ]
+      # The .deb's desktop file and AppStream metadata, renamed to the app ID
+      - desktop-file-edit --set-key=Exec --set-value='tflix %U' --set-icon="${FLATPAK_ID}" usr/share/applications/tflix.desktop
+      - install -Dm644 usr/share/applications/tflix.desktop "${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop"
+      - sed -e "s|<id>com.nunesnetwork.tflix</id>|<id>${FLATPAK_ID}</id>|"
+        -e "s|>tflix.desktop</launchable>|>${FLATPAK_ID}.desktop</launchable>|"
+        usr/share/metainfo/com.nunesnetwork.tflix.appdata.xml > "${FLATPAK_ID}.metainfo.xml"
+      - grep -q "<id>${FLATPAK_ID}</id>" "${FLATPAK_ID}.metainfo.xml"
+      - install -Dm644 "${FLATPAK_ID}.metainfo.xml" "${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml"
