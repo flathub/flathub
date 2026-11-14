@@ -1,0 +1,33 @@
+# Flatpak: SOLO el panel, en modo lectura. El motor de Sentinel necesita ser root en el equipo (leer registros, cortafuegos, vigilar archivos),
+# algo que el sandbox de Flatpak no permite; el motor se instala con el paquete .deb (APT) o el Snap, y este panel muestra su estado.
+app-id: io.github.saraivaruas.sentinel
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: sentinel-panel
+finish-args:
+  - --share=network                      # el panel es un servidor local (127.0.0.1) que abre tu navegador
+  - --filesystem=/var/lib/sentinel:ro    # estado del motor (solo lectura)
+  - --filesystem=/var/log/sentinel:ro    # eventos (solo lectura)
+  - --filesystem=host-etc:ro             # sentinel.conf (solo lectura)
+  - --env=SENTINEL_STATE=/var/lib/sentinel
+  - --env=SENTINEL_LOG=/var/log/sentinel
+  - --env=SENTINEL_CONF=/run/host/etc/sentinel/sentinel.conf
+modules:
+  - name: sentinel-panel
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/saraivaruas/sentinel-hids.git
+        tag: v2.11.0
+        commit: c41af297292ddf1a6f61823f82f285192691666a
+    build-commands:
+      - install -d /app/opt/sentinel /app/bin
+      - cp -a sentinel yara /app/opt/sentinel/
+      - find /app/opt/sentinel -name __pycache__ -prune -exec rm -rf {} +
+      - install -m 755 packaging/flatpak/sentinel-panel /app/bin/sentinel-panel
+      - install -Dm 644 sentinel/ui/icon.svg /app/share/icons/hicolor/scalable/apps/io.github.saraivaruas.sentinel.svg
+      - install -Dm 644 desktop/sentinel.desktop /app/share/applications/io.github.saraivaruas.sentinel.desktop
+      - sed -i 's/^Icon=.*/Icon=io.github.saraivaruas.sentinel/; s/^Exec=.*/Exec=sentinel-panel/' /app/share/applications/io.github.saraivaruas.sentinel.desktop
+      - install -Dm 644 packaging/appstream/io.github.saraivaruas.sentinel.metainfo.xml /app/share/metainfo/io.github.saraivaruas.sentinel.metainfo.xml
+      - sed -i 's|<launchable type="desktop-id">sentinel.desktop|<launchable type="desktop-id">io.github.saraivaruas.sentinel.desktop|' /app/share/metainfo/io.github.saraivaruas.sentinel.metainfo.xml
