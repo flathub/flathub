@@ -1,0 +1,108 @@
+app-id: io.github.marchbeta2087.Imagina
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: Imagina
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /share/doc
+  - /share/man
+  - '*.a'
+  - '*.la'
+
+modules:
+  # GMP and its C++ interface are part of the freedesktop SDK/runtime, so the
+  # app links the runtime copies instead of vendoring another GMP.
+  - name: glm
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/include
+      - cp -r glm /app/include/glm
+      - install -Dm644 copying.txt $FLATPAK_DEST/share/licenses/$FLATPAK_ID/glm/COPYING.txt
+    sources:
+      - type: archive
+        url: https://github.com/g-truc/glm/archive/refs/tags/1.0.1.tar.gz
+        sha256: 9f3174561fd26904b23f0db5e560971cbf9b3cbda0b280f04d5c379d03bf234c
+        strip-components: 1
+
+  # SDL3 is not part of the freedesktop runtime; build it statically so the
+  # sandbox does not need a matching SDL3 from a base app.
+  - name: sdl3
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DSDL_SHARED=OFF
+      - -DSDL_STATIC=ON
+      - -DSDL_TEST_LIBRARY=OFF
+      - -DSDL_TESTS=OFF
+      - -DSDL_EXAMPLES=OFF
+    sources:
+      - type: archive
+        url: https://github.com/libsdl-org/SDL/releases/download/release-3.4.20/SDL3-3.4.20.tar.gz
+        sha256: f3bb06f55bed9557227a700af2ea62e49497ebdf58037732a731a5fb3ef8581f
+        strip-components: 1
+
+  # Dear ImGui is compiled into the front-end from its sources (the project
+  # has no CMake package for it outside vcpkg), so install the tree it needs
+  # and point -DIMAGINA_IMGUI_PATH at it.
+  - name: imgui
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/share/imagina/imgui
+      - cp -r imgui.cpp imgui_draw.cpp imgui_tables.cpp imgui_widgets.cpp imgui.h imconfig.h imgui_internal.h imstb_rectpack.h imstb_textedit.h imstb_truetype.h backends misc /app/share/imagina/imgui/
+    sources:
+      - type: archive
+        url: https://github.com/ocornut/imgui/archive/refs/tags/v1.92.9.tar.gz
+        sha256: af97ed649182c39314320514a672b82008ab462b9293fe23d37b30bfa5d05519
+        strip-components: 1
+
+  # The CJK font is a release asset of this repository; the SDL front-end
+  # looks for it in <prefix>/share/imagina/fonts (see LoadFont()).
+  - name: sarasa-font
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 SarasaMonoSC-Regular.ttf /app/share/imagina/fonts/SarasaMonoSC-Regular.ttf
+    sources:
+      - type: file
+        url: https://github.com/MarchBeta2087/Imagina/releases/download/deps-fonts-v1/SarasaMonoSC-Regular.ttf
+        sha256: f0db6e00d3f9ffc3643430483410fd463758d8da93204f1ed1d30278afc2db28
+
+  - name: imagina
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DIMAGINA_FRONTEND=sdl
+      - -DBUILD_GUI=ON
+      - -DBUILD_CODEC_TEST=OFF
+      - -DIMAGINA_INSTALL_LAYOUT=system
+      - -DMPIR_USE_DLL=OFF
+      - -DCMAKE_PREFIX_PATH=/app
+      - -DINCLUDE_PATH=/app/include
+      - -DLIBRARY_PATH=/app/lib
+      - -DIMAGINA_IMGUI_PATH=/app/share/imagina/imgui
+    post-install:
+      # The system layout installs the generic imagina.desktop/imagina.png used
+      # by the .deb; a Flatpak app must use its application ID instead.
+      - rm -f /app/share/applications/imagina.desktop
+      - rm -f /app/share/pixmaps/imagina.png
+      - rm -rf /app/share/icons/hicolor
+      - install -Dm644 packaging/flatpak/io.github.marchbeta2087.Imagina.desktop /app/share/applications/io.github.marchbeta2087.Imagina.desktop
+      - install -Dm644 packaging/flatpak/io.github.marchbeta2087.Imagina.metainfo.xml /app/share/metainfo/io.github.marchbeta2087.Imagina.metainfo.xml
+      - install -Dm644 icon/imagina_128.png /app/share/icons/hicolor/128x128/apps/io.github.marchbeta2087.Imagina.png
+      - install -Dm644 icon/imagina_256.png /app/share/icons/hicolor/256x256/apps/io.github.marchbeta2087.Imagina.png
+      - install -Dm644 icon/imagina_512.png /app/share/icons/hicolor/512x512/apps/io.github.marchbeta2087.Imagina.png
+      - install -Dm644 LICENSE.txt /app/share/licenses/io.github.marchbeta2087.Imagina/LICENSE.txt
+    sources:
+      - type: git
+        url: https://github.com/MarchBeta2087/Imagina.git
+        tag: v1.0.4
+        commit: 59995d59ceda685b3f26ac514fb5925a4cbadf7e
