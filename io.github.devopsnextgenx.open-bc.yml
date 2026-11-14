@@ -1,0 +1,128 @@
+# Flatpak manifest used by `scripts/build.sh -p lin -s flatpak`.
+# For Flathub/offline builds, generate cargo-sources.json from the pinned
+# open-bc Cargo.lock with flatpak-cargo-generator before building.
+app-id: io.github.devopsnextgenx.open-bc
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.openjdk
+command: openbc
+finish-args:
+  - --env=JAVA_HOME=/app/lib/openbc-java
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri          # 3D compare uses OpenGL
+  - --share=network       # SFTP / FTP remote browsing
+  - --filesystem=/var/log/openbc:rw
+  - --socket=pulseaudio   # media compare playback
+modules:
+  - name: cfr
+    buildsystem: simple
+    build-commands:
+      - install -Dm0644 cfr.jar /app/share/openbc/java/cfr.jar
+      - install -Dm0644 CFR-LICENSE.txt /app/share/licenses/$FLATPAK_ID/cfr/CFR-LICENSE.txt
+    sources:
+      - type: file
+        url: https://repo.maven.apache.org/maven2/org/benf/cfr/0.152/cfr-0.152.jar
+        sha256: f686e8f3ded377d7bc87d216a90e9e9512df4156e75b06c655a16648ae8765b2
+        dest-filename: cfr.jar
+      - type: file
+        path: CFR-LICENSE.txt
+  - name: openbc
+    buildsystem: cmake-ninja
+    # Install the app module's license explicitly instead of relying on
+    # flatpak-builder's automatic license-file detection.
+    # Install both project license texts explicitly into the application image.
+    post-install:
+      - |
+        set -eu
+        find_license() {
+          name="$1"
+          for candidate in "$name" "../$name" "../../$name"; do
+            if [ -f "$candidate" ]; then
+              printf '%s\n' "$candidate"
+              return 0
+            fi
+          done
+          echo "ERROR: $name was not found in the source/build directory" >&2
+          exit 1
+        }
+        install -Dm0644 "$(find_license LICENSE-MIT)" "$FLATPAK_DEST/share/licenses/$FLATPAK_ID/openbc/LICENSE-MIT"
+        install -Dm0644 "$(find_license LICENSE-APACHE)" "$FLATPAK_DEST/share/licenses/$FLATPAK_ID/openbc/LICENSE-APACHE"
+        java_bin=/usr/lib/sdk/openjdk/bin/java
+        if [ ! -x "$java_bin" ]; then
+          echo "ERROR: the OpenJDK SDK extension did not provide java" >&2
+          exit 1
+        fi
+        java_home="$(dirname "$(dirname "$(readlink -f "$java_bin")")")"
+        if [ ! -x "$java_home/bin/jlink" ]; then
+          echo "ERROR: the OpenJDK SDK extension did not provide jlink" >&2
+          exit 1
+        fi
+        "$java_home/bin/jlink" \
+          --add-modules java.base,java.logging \
+          --strip-debug \
+          --no-header-files \
+          --no-man-pages \
+          --compress=2 \
+          --output "$FLATPAK_DEST/lib/openbc-java"
+        install -d "$FLATPAK_DEST/share/licenses/$FLATPAK_ID/openjdk"
+        cp -a "$java_home/legal/." "$FLATPAK_DEST/share/licenses/$FLATPAK_ID/openjdk/"
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/openjdk/bin
+      env:
+        CARGO_HOME: /run/build/openbc/cargo
+        CARGO_NET_OFFLINE: 'true'
+        # Binary Compare uses LIEF. Its build script normally downloads a prebuilt SDK from
+        # GitHub, which the offline Flatpak sandbox cannot do. With this variable it uses the
+        # unpacked SDK below (source 4) instead and never touches the network.
+        LIEF_RUST_PRECOMPILED: /run/build/openbc/lief-sdk
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      # libopenbc_ui_qt.a also holds every cpp/**/*.cpp, which the executable compiles itself too;
+      # ld can pull an archive copy in and then reports "multiple definition". Keep the first
+      # (the executable's). _RELEASE is used on purpose: setting CMAKE_EXE_LINKER_FLAGS itself
+      # would replace the hardening flags (relro/now) Flatpak passes through LDFLAGS.
+      # CMakeLists.txt carries the same option; this line is the belt-and-braces copy.
+      - -DCMAKE_EXE_LINKER_FLAGS_RELEASE=-Wl,--allow-multiple-definition
+      - -DCPACK_PACKAGE_VERSION=1.1.3
+      - -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+      - -DFETCHCONTENT_SOURCE_DIR_CORROSION=/run/build/openbc/corrosion-src
+    sources:
+      # 1. App source the tag rendered into v1.1.3.
+      # Replace the commit placeholder with the verified 40-character tag target SHA.
+      - type: git
+        url: file:///home/kira/git/devopsnextgenx/open-bc
+        commit: a7e3b63447023b4b963c715fc1691811746da833
+        tag: v1.1.3
+
+      # 2. Offline Rust dependencies generated from this release's Cargo.lock.
+      - cargo-sources.json
+
+      # 3. Local Corrosion checkout prevents FetchContent from cloning at build time.
+      # Replace the commit placeholder with the verified 40-character tag target SHA.
+      - type: git
+        url: https://github.com/corrosion-rs/corrosion.git
+        tag: v0.6.1
+        commit: 1499b14e4906a2890f5cee1547c8848db261753d
+        dest: corrosion-src
+
+      # 4. Prebuilt LIEF SDK for the `lief` crate (Binary Compare). The zip holds lib/libLIEF.a and
+      # lib/liblief-sys.a at its root, so nothing may be stripped. KEEP THE VERSION IN THE URL
+      # EQUAL TO THE `lief` / `lief-ffi` VERSION IN Cargo.lock; when that changes, update the
+      # URL and both sha256 values (sha256sum of the downloaded zip).
+      - type: archive
+        url: https://github.com/lief-project/LIEF/releases/download/1.0.0/LIEF-rs-x86_64-unknown-linux-gnu.zip
+        sha256: fefb7b28778850d1047ac43671d6503f0eb86f14db4ed23f9282b87c9c7e1f11
+        strip-components: 0
+        dest: lief-sdk
+        only-arches: [x86_64]
+      - type: archive
+        url: https://github.com/lief-project/LIEF/releases/download/1.0.0/LIEF-rs-aarch64-unknown-linux-gnu.zip
+        sha256: 29ae690374ccc7eed64e7780d72b606ab1f6eeac6195d673ae33c53732455e4a
+        strip-components: 0
+        dest: lief-sdk
+        only-arches: [aarch64]
