@@ -31,14 +31,14 @@ if [ "$(flatpak --default-arch)" != x86_64 ]; then
     exit 1
 fi
 
-for runtime in org.gnome.Platform//50 org.gnome.Sdk//50; do
+for runtime in org.gnome.Platform//51 org.gnome.Sdk//51; do
     flatpak info "$runtime" >/dev/null 2>&1 || {
         printf 'Runtime requis : %s\n' "$runtime" >&2
         exit 1
     }
 done
 
-flatpak-builder --user --arch=x86_64 --disable-rofiles-fuse --force-clean --repo=repo \
+flatpak-builder --user --arch=x86_64 --default-branch=stable --disable-rofiles-fuse --force-clean --repo=repo \
     build-dir com.nonetchat.NoNetChat.yml
 flatpak build-bundle --arch=x86_64 repo \
     com.nonetchat.NoNetChat-0.3.0-x86_64.flatpak com.nonetchat.NoNetChat stable
