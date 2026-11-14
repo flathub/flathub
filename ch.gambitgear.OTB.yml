@@ -1,0 +1,81 @@
+# Flatpak recipe for Opening Tree Builder
+# https://github.com/malo1972/otb
+app-id: ch.gambitgear.OTB
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+# PyQt6 for this Qt version, built by Flathub
+base: com.riverbankcomputing.PyQt.BaseApp
+base-version: '6.11'
+command: otb
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Books can live in any folder (Set Book Folder), PGN files anywhere in
+  # the home folder; a new book goes to Documents/OTB by default.
+  - --filesystem=home
+build-options:
+  env:
+    BASEAPP_REMOVE_WEBENGINE: '1'
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+
+modules:
+  - name: python-chess
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
+        --prefix=${FLATPAK_DEST} --no-build-isolation chess
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/93/09/7d04d7581ae3bb8b598017941781bceb7959dd1b13e3ebf7b6a2cd843bc9/chess-1.11.2.tar.gz
+        sha256: a8b43e5678fdb3000695bdaa573117ad683761e5ca38e591c4826eba6d25bb39
+
+  # Stockfish, the only engine OTB uses; found in engines/ next to otb.py.
+  # Same version as the Windows installer and the snap.
+  - name: stockfish
+    buildsystem: simple
+    build-commands:
+      - |
+        case "$(uname -m)" in
+          x86_64)  arch=x86-64-sse41-popcnt ;;  # practically every x86-64 PC since about 2008
+          aarch64) arch=armv8 ;;
+          *)       arch=general-64 ;;
+        esac
+        make -C src -j"${FLATPAK_BUILDER_N_JOBS}" build ARCH="$arch"
+      - install -Dm755 src/stockfish -t ${FLATPAK_DEST}/share/otb/engines
+      - install -Dm644 Copying.txt ${FLATPAK_DEST}/share/otb/engines/Stockfish-COPYING.txt
+      - install -Dm644 AUTHORS ${FLATPAK_DEST}/share/otb/engines/Stockfish-AUTHORS.txt
+    sources:
+      - type: git
+        url: https://github.com/official-stockfish/Stockfish.git
+        tag: sf_19
+        commit: edb0d9db6731067ec50ce619ff372b463bc4dd5d
+      # the neural network, built into the binary; no download during the build
+      - type: file
+        url: https://github.com/official-stockfish/networks/raw/master/nn-1a298aa575a0.nnue
+        sha256: 1a298aa575a085434d29027978dc36867fe9c5bcea9376654b7a8eba1e52dfc2
+        dest: src
+
+  - name: otb
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 otb.py otb_icon.png LICENSE.txt -t ${FLATPAK_DEST}/share/otb
+      - install -Dm755 otb.sh ${FLATPAK_DEST}/bin/otb
+      - install -Dm644 packaging/linux/ch.gambitgear.OTB.desktop -t ${FLATPAK_DEST}/share/applications
+      - install -Dm644 packaging/linux/ch.gambitgear.OTB.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo
+      - cp -r packaging/linux/icons ${FLATPAK_DEST}/share/
+    sources:
+      - type: git
+        url: https://github.com/malo1972/otb.git
+        tag: v1.2
+        commit: fc9a4177c92ad61baf8adb9e6a7c11ce12549962
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - type: script
+        dest-filename: otb.sh
+        commands:
+          - exec python3 /app/share/otb/otb.py "$@"
