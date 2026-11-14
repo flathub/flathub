@@ -1,3 +1,5 @@
+## [2026-11-14] Move `io.github.ychsue.nonblockinglife.metainfo.xml` back to repo [NonBlockingLife](https://github.com/ychsue/NonBlockingLife)
+
 ## [2026-11-10] 設法改成 x11 與 wayland 並行， fallback-x11 會失敗
 1. Try to use 
 --socket=x11
