@@ -1,0 +1,173 @@
+app-id: io.github.ada_h00k.Corvus
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.llvm21
+command: corvus
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --nosocket=x11
+  - --socket=pulseaudio
+  - --filesystem=xdg-run/pipewire-0:ro
+  - --device=dri
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.secrets
+
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    version: '25.08'
+    add-ld-path: .
+cleanup-commands:
+  - mkdir -p ${FLATPAK_DEST}/lib/ffmpeg
+
+modules:
+  - name: libsecret
+    buildsystem: meson
+    config-opts:
+      - -Dmanpage=false
+      - -Dvapi=false
+      - -Dgtk_doc=false
+      - -Dintrospection=false
+      - -Dbash_completion=disabled
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+    sources:
+      - type: git
+        url: https://github.com/GNOME/libsecret.git
+        tag: 0.21.8
+        commit: 257547ed7a541fc63400f91578216d3b53721c57
+        x-checker-data:
+          type: git
+          tag-pattern: ^(\d+\.\d+\.\d+)$
+
+  - name: qtkeychain
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DBUILD_WITH_QT6=ON
+      - -DBUILD_TRANSLATIONS=OFF
+      - -DBUILD_TEST_APPLICATION=OFF
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+      - /lib/*.so
+    sources:
+      - type: git
+        url: https://github.com/frankosterfeld/qtkeychain.git
+        tag: 0.17.0
+        commit: 875f77d9f61bd97fd84cca47ce3bc71186dfbd09
+        x-checker-data:
+          type: git
+          tag-pattern: ^(\d+\.\d+\.\d+)$
+
+  - name: libqrencode
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - -DBUILD_SHARED_LIBS=OFF
+      - -DWITH_TOOLS=ON
+      - -DWITH_TESTS=OFF
+    cleanup:
+      - /include
+      - /lib
+      - /share/man
+    sources:
+      - type: git
+        url: https://github.com/fukuchi/libqrencode.git
+        tag: v4.1.1
+        commit: 715e29fd4cd71b6e452ae0f4e36d917b43122ce8
+        x-checker-data:
+          type: git
+          tag-pattern: ^v(\d+\.\d+\.\d+)$
+
+  - name: protobuf
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -Dprotobuf_BUILD_TESTS=OFF
+      - -Dprotobuf_BUILD_SHARED_LIBS=ON
+      - -Dprotobuf_ABSL_PROVIDER=module
+    cleanup:
+      - /bin/protoc*
+      - /include/google
+      - /include/absl
+      - /lib/libprotobuf*
+      - /lib/libprotoc*
+      - /lib/libabsl*
+      - /lib/cmake/protobuf
+      - /lib/cmake/absl
+      - /lib/pkgconfig/protobuf*.pc
+      - /lib/pkgconfig/absl*.pc
+    sources:
+      - type: git
+        url: https://github.com/protocolbuffers/protobuf.git
+        tag: v36.2
+        commit: 2c74169b34066ceb8ddb6b882fcb3fb32d737a55
+        x-checker-data:
+          type: git
+          tag-pattern: ^v(\d+\.\d+\.\d+)$
+
+  - name: corvus-cli
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm21/bin
+      env:
+        CARGO_HOME: /run/build/corvus-cli/cargo
+        CARGO_NET_OFFLINE: 'true'
+        LIBCLANG_PATH: /usr/lib/sdk/llvm21/lib
+    build-commands:
+      - cargo build --release --offline --locked
+      - install -Dm755 target/release/corvus-cli /app/bin/corvus-cli
+    sources:
+      - type: git
+        url: https://github.com/ada-h00k/corvus-cli.git
+        tag: v1.2.2
+        commit: 1759da4ad5107674797a3ec0250b421e38b8c278
+        x-checker-data:
+          type: git
+          tag-pattern: ^v(\d+\.\d+\.\d+)$
+      - corvus-cli-cargo-sources.json
+
+  - name: corvus
+    buildsystem: cmake-ninja
+    builddir: true
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/corvus/cargo
+        CARGO_NET_OFFLINE: 'true'
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    post-install:
+      - mv /app/share/applications/corvus.desktop /app/share/applications/io.github.ada_h00k.Corvus.desktop
+      - sed -i 's|^Icon=.*|Icon=io.github.ada_h00k.Corvus|' /app/share/applications/io.github.ada_h00k.Corvus.desktop
+      - mv /app/share/icons/hicolor/scalable/apps/corvus.svg /app/share/icons/hicolor/scalable/apps/io.github.ada_h00k.Corvus.svg
+      - install -Dm644 ${FLATPAK_BUILDER_BUILDDIR}/packaging/flatpak/io.github.ada_h00k.Corvus.metainfo.xml
+        -t /app/share/metainfo
+      - install -Dm644 ${FLATPAK_BUILDER_BUILDDIR}/LICENSE -t /app/share/licenses/io.github.ada_h00k.Corvus
+    sources:
+      - type: git
+        url: https://github.com/ada-h00k/Corvus.git
+        tag: v1.1.0
+        commit: 120b23ed1b70f5046a64b8f27b79aab49102c97b
+        x-checker-data:
+          type: git
+          tag-pattern: ^v(\d+\.\d+\.\d+)$
+      - cargo-sources.json
