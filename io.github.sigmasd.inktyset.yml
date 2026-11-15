@@ -1,0 +1,173 @@
+id: io.github.sigmasd.inktyset
+runtime: org.freedesktop.Platform
+runtime-version: "26.08"
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: "26.08"
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: inktyset
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  # for scanner + gpu
+  - --device=all
+  # to download models
+  - --share=network
+  # to find network scanners
+  - --system-talk-name=org.freedesktop.Avahi
+  # app saves user files in ~/Documents/Inktyset  by default
+  - --filesystem=xdg-documents/Inktyset:create
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  # required for llama.cpp vulkan backend
+  - name: spirv-headers
+    buildsystem: cmake-ninja
+    cleanup: ["*"]
+    sources:
+      - type: archive
+        url: https://github.com/KhronosGroup/SPIRV-Headers/archive/refs/tags/vulkan-sdk-1.4.357.0.tar.gz
+        sha256: 4d703067a7e06331ccb37bdfed3f9b7879cc61969a2689ae95c95db34a47ff07
+
+  - name: llama-server
+    buildsystem: simple
+    build-commands:
+      - >-
+        cmake -S . -B build -G Ninja
+        -DCMAKE_BUILD_TYPE=Release
+        -DBUILD_SHARED_LIBS=OFF
+        -DGGML_VULKAN=ON
+        -DGGML_NATIVE=OFF
+        -DLLAMA_BUILD_NUMBER=12061
+        -DLLAMA_BUILD_TESTS=OFF
+        -DLLAMA_BUILD_EXAMPLES=OFF
+        -DLLAMA_BUILD_APP=OFF
+        -DLLAMA_USE_PREBUILT_UI=OFF
+        -DLLAMA_OPENSSL=OFF
+      - cmake --build build --target llama-server
+      - install -Dm755 build/bin/llama-server /app/bin/llama-server
+    sources:
+      - type: archive
+        url: https://github.com/ggml-org/llama.cpp/archive/refs/tags/b12061.tar.gz
+        sha256: 08ce2d8a63e06dca817cdf207721fb56091927b7eedb3486949e84a2d70b6966
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/ggml-org/llama.cpp/releases/latest
+          version-query: .tag_name
+          url-query: '"https://github.com/ggml-org/llama.cpp/archive/refs/tags/" + $version + ".tar.gz"'
+
+  - name: tectonic
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/tectonic/cargo
+    build-commands:
+      - cargo --offline build --release --locked --features external-harfbuzz
+      - install -Dm755 target/release/tectonic /app/bin/tectonic
+    sources:
+      - type: archive
+        url: https://github.com/tectonic-typesetting/tectonic/archive/refs/tags/tectonic@0.17.0.tar.gz
+        sha256: 30adda98f67dd5389844f6023adeeb54b5475c17a54b777900644468fbc9765d
+      - tectonic-cargo-sources.json
+
+  - name: typst
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/typst/cargo
+        TYPST_VERSION: 0.15.1
+    build-commands:
+      - cargo --offline build --release --locked -p typst-cli
+      - install -Dm755 target/release/typst /app/bin/typst
+    sources:
+      - type: archive
+        url: https://github.com/typst/typst/archive/refs/tags/v0.15.1.tar.gz
+        sha256: c07909e01a2a6941e52c9b616e48c209c755eed416d62bcf5583c37a4aca01a3
+      - typst-cargo-sources.json
+
+  - name: sane-backends
+    config-opts:
+      - --disable-locking # its lock folder (/var/lock/sane) can't exist in the sandbox
+      - --disable-static
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/doc
+      - /share/man
+      - /sbin
+      - /bin/sane-config
+      - /bin/gamma4scanimage
+      - /bin/sane-find-scanner
+      - /bin/umax_pp
+      - "*.la"
+    sources:
+      - type: archive
+        url: https://gitlab.com/-/project/429008/uploads/843c156420e211859e974f78f64c3ea3/sane-backends-1.4.0.tar.gz
+        sha256: f99205c903dfe2fb8990f0c531232c9a00ec9c2c66ac7cb0ce50b4af9f407a72
+
+  # driverless network scanners
+  - name: sane-airscan
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://github.com/alexpevzner/sane-airscan/archive/refs/tags/0.99.38.tar.gz
+        sha256: 1e5b3b8373141caa37bf42fe74ae1950de3ff15c84966d8a415485d334ba5507
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/alexpevzner/sane-airscan/releases/latest
+          version-query: .tag_name
+          url-query: '"https://github.com/alexpevzner/sane-airscan/archive/refs/tags/" + $version + ".tar.gz"'
+
+  - name: inktyset
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node24/bin
+      env:
+        XDG_CACHE_HOME: /run/build/inktyset/flatpak-node/cache
+        ELECTRON_CACHE: /run/build/inktyset/flatpak-node/cache/electron
+        npm_config_cache: /run/build/inktyset/flatpak-node/npm-cache
+        CI: "true"
+    build-commands:
+      # fixup the offline store for pnpm for packages installed by URL
+      - python3 flatpak/pnpm-url-keys.py flatpak-node/pnpm-store/v11/index.db
+      - ./pnpm-exe/pnpm install --offline --frozen-lockfile --trust-lockfile
+      - ./node_modules/.bin/vp build
+      - ./node_modules/.bin/vp pack
+      - ./node_modules/.bin/electron-builder --config shell/electron/builder.yml --linux dir --publish never
+      - cp -a dist/packages/linux*-unpacked /app/main
+      - install -Dm755 inktyset.sh /app/bin/inktyset
+      - install -Dm644 flatpak/io.github.sigmasd.inktyset.desktop -t /app/share/applications
+      - install -Dm644 flatpak/io.github.sigmasd.inktyset.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 app/icon.svg /app/share/icons/hicolor/scalable/apps/io.github.sigmasd.inktyset.svg
+      - install -Dm644 app/icon.png /app/share/icons/hicolor/512x512/apps/io.github.sigmasd.inktyset.png
+    sources:
+      - type: git
+        url: https://github.com/sigmaSd/inktyset.git
+        tag: v1.0.0
+        commit: 71ea8408cb84aebe56fe4004540ac0006aa97564
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - node-sources.json
+      # use the same pnpm version as the app
+      - type: archive
+        only-arches: [x86_64]
+        url: https://registry.npmjs.org/@pnpm/exe.linux-x64/-/exe.linux-x64-12.11.2.tgz
+        sha512: 14aed029edb8018829a49c0ede6a68a18a6d76ebaf206a8a24f8b969cecc7675a48d4cb8e8905f621096d20ae7916282f1839fd31faf1af8ae42a2448f74a941
+        dest: pnpm-exe
+      - type: archive
+        only-arches: [aarch64]
+        url: https://registry.npmjs.org/@pnpm/exe.linux-arm64/-/exe.linux-arm64-12.11.2.tgz
+        sha512: e9ef190105301570161c71efe457ac5aa7ff9042b4e30ba2b41bf97ff831ce40b40e205f6a2c6bf9ffba25079d7bc485e098b92dc33054525bcc0b5f7e95b112
+        dest: pnpm-exe
+      - type: script
+        dest-filename: inktyset.sh
+        commands:
+          - exec zypak-wrapper /app/main/inktyset --class=io.github.sigmasd.inktyset "$@"
