@@ -1,0 +1,58 @@
+id: app.romarr.ROMarr
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: romarr-desktop
+
+finish-args:
+  # The window talks to ROMarr over loopback, and ROMarr talks to the
+  # indexers, download clients and library servers the user configures.
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # ROMarr files games into a library folder the user picks (EmuDeck and
+  # RetroDECK use ~/Emulation/roms) and reads completed downloads from
+  # wherever the download client writes them, often a mounted drive or the
+  # Steam Deck's SD card.
+  - --filesystem=home
+  - --filesystem=/run/media
+  - --filesystem=/media
+  - --filesystem=/mnt
+
+modules:
+  - python3-requests.json
+
+  - name: romarr
+    buildsystem: simple
+    build-commands:
+      - install -d ${FLATPAK_DEST}/lib/romarr
+      - cp -r romarr ${FLATPAK_DEST}/lib/romarr/
+      # The version ROMarr reports comes from the newest metainfo release,
+      # which flatpak-external-data-checker bumps together with the tarball.
+      - printf '__version__ = "%s"\n' "$(sed -n 's/.*<release version="\([^"]*\)".*/\1/p' app.romarr.ROMarr.metainfo.xml | head -1)" > ${FLATPAK_DEST}/lib/romarr/romarr/_version.py
+      - python3 -m compileall -q ${FLATPAK_DEST}/lib/romarr
+      - install -Dm755 romarr-desktop.py ${FLATPAK_DEST}/bin/romarr-desktop
+      - install -Dm644 app.romarr.ROMarr.desktop -t ${FLATPAK_DEST}/share/applications
+      - install -Dm644 app.romarr.ROMarr.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo
+      - install -Dm644 app.romarr.ROMarr.svg -t ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps
+    sources:
+      - type: archive
+        url: https://github.com/BlizzHacker/romarr/archive/refs/tags/v1.10.0.tar.gz
+        sha256: ff329ec6e6eb99176ae54e753b850ae225c4061e0f9c688517d12a5be3106cb6
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/BlizzHacker/romarr/releases/latest
+          version-query: .tag_name | sub("^v"; "")
+          url-query: '"https://github.com/BlizzHacker/romarr/archive/refs/tags/" + .tag_name + ".tar.gz"'
+          timestamp-query: .published_at
+          is-main-source: true
+      - type: file
+        path: romarr-desktop.py
+      - type: file
+        path: app.romarr.ROMarr.desktop
+      - type: file
+        path: app.romarr.ROMarr.metainfo.xml
+      - type: file
+        path: app.romarr.ROMarr.svg
