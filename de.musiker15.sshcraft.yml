@@ -1,0 +1,54 @@
+id: de.musiker15.sshcraft
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: sshcraft
+finish-args:
+  # Display: Wayland first; X11 only when no Wayland compositor is running.
+  - --socket=wayland
+  - --socket=fallback-x11
+  # X11 shared memory (MIT-SHM). Without it the X11 fallback is slow or fails.
+  - --share=ipc
+  # SSH, sync and port forwarding need the network.
+  - --share=network
+  # GPU access for rendering.
+  - --device=dri
+  # Keys and passwords live in the desktop's keyring (Secret Service).
+  - --talk-name=org.freedesktop.secrets
+  # ~/.ssh/config and its keys are read for import and the live link (F1). Written only when
+  # the user saves a linked host back (sshconfig.write), with a copy of the old file in
+  # ~/.ssh/.sshcraft-backup first.
+  - --filesystem=~/.ssh
+  # Open/Save dialogs (import, export, logs) use the file-chooser portal (rfd), so broad
+  # filesystem access isn't needed. Serial ports and the host's own shell are not reachable from
+  # the sandbox; use the deb, rpm, AppImage or tarball for them.
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+modules:
+  - name: sshcraft
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/sshcraft/cargo
+        CARGO_NET_OFFLINE: 'true'
+    build-commands:
+      - cargo --offline build --release --locked -p sshcraft -p sshcraft-cli
+      - install -Dm755 target/release/sshcraft /app/bin/sshcraft
+      - install -Dm755 target/release/sshcraft-cli /app/bin/sshcraft-cli
+      - install -Dm644 packaging/linux/de.musiker15.sshcraft.desktop /app/share/applications/de.musiker15.sshcraft.desktop
+      - mkdir -p /app/share/icons && cp -R assets/app-icon/hicolor /app/share/icons/
+      - install -Dm644 NOTICE /app/share/doc/sshcraft/NOTICE
+      - install -Dm644 ATTRIBUTION.md /app/share/doc/sshcraft/ATTRIBUTION.md
+      - >-
+        version=$(awk '/^\[/{p=($0=="[workspace.package]");next} p&&$1=="version"{gsub(/[" ]/,"",$3);print $3;exit}' Cargo.toml);
+        install -d /app/share/metainfo;
+        sed -e "s/@VERSION@/$version/" -e "s/@DATE@/$(date -u +%Y-%m-%d)/"
+        packaging/linux/de.musiker15.sshcraft.metainfo.xml.in > /app/share/metainfo/de.musiker15.sshcraft.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/Musiker15/sshcraft.git
+        tag: v0.1.1
+        commit: 75dc7161a5018bf3dc47bafc9db7236b58e1aedf
+      - cargo-sources.json
