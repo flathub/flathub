@@ -1,0 +1,145 @@
+# Manifiesto Flatpak do FDR SYSTEM (submissão à Flathub).
+#
+# ESTADO: esqueleto pronto a validar. A parte .NET (app) e os módulos das
+# bibliotecas seguem as instruções oficiais, mas a compilação com
+# flatpak-builder ainda NÃO foi corrida nesta máquina (falta o SDK 25.08).
+# Antes de abrir o PR na Flathub:
+#
+#   sudo apt install flatpak-builder
+#   flatpak install flathub org.freedesktop.Sdk//25.08 org.freedesktop.Sdk.Extension.dotnet8//25.08
+#   flatpak-builder --user --install --force-clean build-dir \
+#       packaging/flatpak/io.github.anymousdark.FDRSystem.yml
+#
+# O sha256 abaixo é do tarball de fontes publicado nas releases
+# (bash packaging/flatpak/make-source-tarball.sh).
+
+app-id: io.github.anymousdark.FDRSystem
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet8
+command: FDR-SYSTEM
+
+finish-args:
+  # A app lê o iPhone por USB e fala com o usbmuxd do sistema anfitrião.
+  - --device=all
+  - --filesystem=/run/usbmuxd
+  # Páginas Online/Firmware descarregam IPSW (assinados pela Apple).
+  - --share=network
+  # Interface Avalonia: Wayland com recurso a X11.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --env=DOTNET_CLI_TELEMETRY_OPTOUT=1
+
+modules:
+  # ---------------------------------------------------------------- bibliotecas
+  - name: libplist
+    config-opts:
+      - --disable-static
+      - --without-cython
+    sources:
+      - type: archive
+        url: https://github.com/libimobiledevice/libplist/releases/download/2.8.1/libplist-2.8.1.tar.bz2
+        sha256: 2a1792e5820e1657c173735fde75baeebd6dd967d2ac47be1e3891ddc64ebefa
+
+  - name: libimobiledevice-glue
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://github.com/libimobiledevice/libimobiledevice-glue/releases/download/1.3.3/libimobiledevice-glue-1.3.3.tar.bz2
+        sha256: 920ce01382a32695f49b23292b4979a03f0afd16c58e8755d8b7f41804acc1a9
+
+  - name: libtatsu
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://github.com/libimobiledevice/libtatsu/releases/download/1.1.1/libtatsu-1.1.1.tar.bz2
+        sha256: 18f471f131c1d55ccc02fa09565d870030c6ce92f737b89fe1b3849941ebb303
+
+  - name: libusbmuxd
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://github.com/libimobiledevice/libusbmuxd/releases/download/2.1.1/libusbmuxd-2.1.1.tar.bz2
+        sha256: 5546f1aba1c3d1812c2b47d976312d00547d1044b84b6a461323c621f396efce
+
+  - name: libimobiledevice
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://github.com/libimobiledevice/libimobiledevice/releases/download/1.4.0/libimobiledevice-1.4.0.tar.bz2
+        sha256: 23cc0077e221c7d991bd0eb02150a0d49199bcca1ddf059edccee9ffd914939d
+
+  - name: libirecovery
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://github.com/libimobiledevice/libirecovery/releases/download/1.3.1/libirecovery-1.3.1.tar.bz2
+        sha256: 28a3a521782063c8eb2ee5f4c0f38a517e023853edb55856052cdd7ac400381b
+
+  - name: libzip
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_DOC=OFF
+      - -DBUILD_EXAMPLES=OFF
+      - -DBUILD_REGRESS=OFF
+      - -DBUILD_TOOLS=OFF
+    sources:
+      - type: archive
+        url: https://libzip.org/download/libzip-1.11.4.tar.gz
+        sha256: 82e9f2f2421f9d7c2466bbc3173cd09595a88ea37db0d559a9d0a2dc60dc722e
+
+  # 1.0.0 é de 2020 e não escreve "progress:"; usamos o commit de 2025-10-02,
+  # o mesmo que as distribuições empacotam como 1.0.1.
+  - name: idevicerestore
+    sources:
+      - type: git
+        url: https://github.com/libimobiledevice/idevicerestore.git
+        commit: f4d0f7e83105cc362527566315abee07b0840848
+        # O repositório upstream tem um objeto com modos de ficheiro
+        # "zero-padded"; o fsck do git recusa-o e o clone falha.
+        disable-fsckobjects: true
+
+  # ----------------------------------------------------------------- aplicação
+  - name: fdr-system
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/dotnet8/bin
+      env:
+        DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+        DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+    build-commands:
+      - |
+        case "$(uname -m)" in
+          x86_64)  RID=linux-x64 ;;
+          aarch64) RID=linux-arm64 ;;
+          *) echo "arquitetura nao suportada: $(uname -m)" >&2; exit 1 ;;
+        esac
+        echo "==> dotnet publish para $RID"
+        dotnet restore src/FdrSystem.App/FdrSystem.App.csproj -r "$RID" \
+          --source "$PWD/nuget-sources"
+        dotnet publish src/FdrSystem.App/FdrSystem.App.csproj \
+          -c Release -r "$RID" --self-contained true --no-restore \
+          -p:DebugType=None -p:DebugSymbols=false \
+          -o /app/lib/fdr-system
+      - install -d /app/bin
+      - ln -sf /app/lib/fdr-system/FDR-SYSTEM /app/bin/FDR-SYSTEM
+      - install -Dm644 packaging/flatpak/io.github.anymousdark.FDRSystem.desktop
+        /app/share/applications/io.github.anymousdark.FDRSystem.desktop
+      - install -Dm644 packaging/flatpak/io.github.anymousdark.FDRSystem.metainfo.xml
+        /app/share/metainfo/io.github.anymousdark.FDRSystem.metainfo.xml
+      - install -Dm644 src/FdrSystem.App/Assets/fdr-system.svg
+        /app/share/icons/hicolor/scalable/apps/io.github.anymousdark.FDRSystem.svg
+    sources:
+      - type: archive
+        url: https://github.com/anymousdark/diagnostico-idevice/releases/download/linux-v1.6.9/FDR-SYSTEM-1.6.9-src.tar.gz
+        sha256: 111f25c1293dd0feff8b970b90b89a1a46a1206b569fb64fe794b4b0d72e875f
+      - nuget-sources.json
