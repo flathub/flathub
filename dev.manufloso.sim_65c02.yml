@@ -1,0 +1,202 @@
+app-id: dev.manufloso.sim_65c02
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: SIM_65C02
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  - --socket=pulseaudio
+  - --share=network
+  - --filesystem=home
+  - --env=MOS_CLANG=/app/toolchain/bin/mos-common-clang
+  - --env=PYTHONPATH=/app/lib/python3.14/site-packages
+
+modules:
+  - name: ffmpeg
+    buildsystem: simple
+    build-commands:
+      - ./configure --prefix=/app --enable-shared --disable-static --disable-doc --disable-programs
+      - make -j"$FLATPAK_BUILDER_NJOBS"
+      - make install
+    sources:
+      - type: git
+        url: https://github.com/FFmpeg/FFmpeg.git
+        tag: n8.1.3
+        commit: 1041abdc962f4cc4f394aa8de9dc5236c0c3b9e7
+
+  - name: dosfstools
+    buildsystem: autotools
+    config-opts:
+      - --sbindir=/app/bin
+      - --enable-compat-symlinks
+    sources:
+      - type: git
+        url: https://github.com/dosfstools/dosfstools.git
+        tag: v4.2
+        commit: 697f7692c951173c1b732901e13f72bd3182d575
+
+  - name: mtools
+    buildsystem: autotools
+    config-opts:
+      - --disable-floppyd
+      - --without-x
+    sources:
+      - type: archive
+        url: https://ftp.gnu.org/gnu/mtools/mtools-4.0.50.tar.bz2
+        sha256: f3a58e6cfc2634b03c240442548e3b00103692357afc28e1e7104744dd6478b5
+
+  - name: python3-modules
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}" --prefix=/app --ignore-installed --no-build-isolation MarkupSafe==3.0.2 Jinja2==3.1.6 packaging==24.2 mido==1.3.3 pillow==11.1.0
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/source/m/markupsafe/markupsafe-3.0.2.tar.gz
+        sha256: ee55d3edf80167e48ea11a923c7386f4669df67d7994554387f84e7d8b0a2bf0
+      - type: file
+        url: https://files.pythonhosted.org/packages/py3/j/jinja2/jinja2-3.1.6-py3-none-any.whl
+        sha256: 85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
+      - type: file
+        url: https://files.pythonhosted.org/packages/py3/p/packaging/packaging-24.2-py3-none-any.whl
+        sha256: 09abb1bccd265c01f4a3aa3f7a7db064b36514d2cba19a2f694fe6150451a759
+      - type: file
+        url: https://files.pythonhosted.org/packages/py3/m/mido/mido-1.3.3-py3-none-any.whl
+        sha256: 01033c9b10b049e4436fca2762194ca839b09a4334091dd3c34e7f4ae674fd8a
+      - type: file
+        url: https://files.pythonhosted.org/packages/source/p/pillow/pillow-11.1.0.tar.gz
+        sha256: 368da70808b36d73b4b390a8ffac11069f8a5c85f29eff1f1b01bcf3ef5b2a20
+
+  - name: llvm-mos-sdk
+    buildsystem: simple
+    build-commands:
+      - |
+        if [ -x bin/mos-common-clang ]; then
+          mkdir -p /app/toolchain
+          cp -a * /app/toolchain/
+        else
+          cmake -C llvm-mos-src/clang/cmake/caches/MOS.cmake -G Ninja -S llvm-mos-src/llvm -B build-llvm -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/app/toolchain -DLLVM_ENABLE_ASSERTIONS=OFF
+          cmake --build build-llvm -j"$FLATPAK_BUILDER_NJOBS"
+          cmake --install build-llvm
+          PATH="/app/toolchain/bin:$PATH" cmake -G Ninja -S llvm-mos-sdk-src -B build-sdk -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/app/toolchain -DLLVM_MOS=/app/toolchain
+          cmake --build build-sdk -j"$FLATPAK_BUILDER_NJOBS"
+          cmake --install build-sdk
+        fi
+    sources:
+      - type: archive
+        url: https://github.com/llvm-mos/llvm-mos-sdk/releases/download/v23.4.0/llvm-mos-linux.tar.xz
+        sha256: 0b1dbc8a2b15db88a1a400a687ea24cf1a38548c5ba9fdd61a473e4580ba00c1
+        only-arches: [x86_64]
+      - type: git
+        url: https://github.com/llvm-mos/llvm-mos.git
+        commit: a40207a371b60ff787ece46817d9c0f62eada719
+        dest: llvm-mos-src
+        only-arches: [aarch64]
+      - type: git
+        url: https://github.com/llvm-mos/llvm-mos-sdk.git
+        tag: v23.4.0
+        commit: 327de902ffc49f8455ca5447b7682bc77be5de05
+        dest: llvm-mos-sdk-src
+        only-arches: [aarch64]
+
+  - name: sim_65c02
+    buildsystem: simple
+    build-commands:
+      - |
+        PY_SITE=$(python3 -c "import sysconfig; print(f'/app/lib/python{sysconfig.get_python_version()}/site-packages')")
+        export PYTHONPATH="${PY_SITE}${PYTHONPATH:+:$PYTHONPATH}"
+        if [ ! -f SDK.zip ]; then
+          cmake -S . -B build/nsf_core -GNinja -DCMAKE_BUILD_TYPE=Release -DBUILD_NSF_RUNNER_ONLY=ON
+          cmake --build build/nsf_core -j"$FLATPAK_BUILDER_NJOBS"
+          mkdir -p output
+          cp build/nsf_core/SIM_65C02 output/
+          PATH="/app/toolchain/bin:$PATH" MOS_CLANG="/app/toolchain/bin/mos-common-clang" ./sdk/scripts/create-sdk.sh
+        fi
+        if ! grep -q "<releases>" flatpak/dev.manufloso.sim_65c02.metainfo.xml; then
+          python3 -c 'import pathlib; p=pathlib.Path("flatpak/dev.manufloso.sim_65c02.metainfo.xml"); p.write_text(p.read_text().replace("</component>", "  <releases>\n    <release version=\"2.5.0\" date=\"2026-11-17\"/>\n  </releases>\n</component>"))'
+        fi
+        cmake -S . -B build/flatpak -GNinja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX=/app \
+          -DLLVM_MOS_DIR=/app/toolchain/bin \
+          -DFETCHCONTENT_FULLY_DISCONNECTED=ON \
+          -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST="$PWD/_flatpak_deps/googletest" \
+          -DFETCHCONTENT_SOURCE_DIR_SDL3="$PWD/_flatpak_deps/sdl3" \
+          -DFETCHCONTENT_SOURCE_DIR_IMGUI="$PWD/_flatpak_deps/imgui" \
+          -DFETCHCONTENT_SOURCE_DIR_IMGUIFILEDIALOG="$PWD/_flatpak_deps/imguifiledialog" \
+          -DFETCHCONTENT_SOURCE_DIR_IMGUICOLORTEXTEDIT="$PWD/_flatpak_deps/imguicolortextedit" \
+          -DFETCHCONTENT_SOURCE_DIR_JSON="$PWD/_flatpak_deps/json" \
+          -DFETCHCONTENT_SOURCE_DIR_GLAD="$PWD/_flatpak_deps/glad" \
+          -DFETCHCONTENT_SOURCE_DIR_MINIZ="$PWD/_flatpak_deps/miniz" \
+          -DFETCHCONTENT_SOURCE_DIR_ASIO="$PWD/_flatpak_deps/asio" \
+          -DFETCHCONTENT_SOURCE_DIR_HTTPLIB="$PWD/_flatpak_deps/httplib"
+        cmake --build build/flatpak -j"$FLATPAK_BUILDER_NJOBS"
+        cmake --install build/flatpak
+    sources:
+      - type: git
+        url: https://github.com/ManuFlosoYT/65c02-SIM.git
+        tag: v2.5.0
+        commit: 6f10b478522326391689301783635d6b7c20c8e9
+      - type: git
+        url: https://github.com/ManuFlosoYT/65c02-SIM.git
+        commit: d6c61982a0fdde4a9851fb06e4f22591ecefb118
+        dest: sdk
+      - type: git
+        url: https://github.com/ManuFlosoYT/65c02-SIM.git
+        commit: 8a9a3f0f6e935cf126d660568872cf09fb6b4bfa
+        dest: sdk/microdos
+      - type: file
+        url: https://github.com/ManuFlosoYT/65c02-SIM/releases/download/v2.5.0/SDK.zip
+        sha256: 25b3353b7e4f6ee6a907c3fbd8adb288aa06170c024eddc897c982980a8773d8
+      - type: git
+        url: https://github.com/google/googletest.git
+        tag: v1.18.0
+        commit: 063de7e9578f82b369302001269680b4b1553359
+        dest: _flatpak_deps/googletest
+      - type: git
+        url: https://github.com/libsdl-org/SDL.git
+        tag: release-3.4.20
+        commit: f00dc919ca35b9756316e86c4777392de442f9b2
+        dest: _flatpak_deps/sdl3
+      - type: git
+        url: https://github.com/ocornut/imgui.git
+        tag: v1.93.0
+        commit: c1aaac65e896a45f81f47a4d68f9959e0f86c859
+        dest: _flatpak_deps/imgui
+      - type: git
+        url: https://github.com/aiekick/ImGuiFileDialog.git
+        tag: v0.6.8
+        commit: ee77f190861193a995435c388682f1512f6fd29a
+        dest: _flatpak_deps/imguifiledialog
+      - type: git
+        url: https://github.com/BalazsJako/ImGuiColorTextEdit.git
+        commit: ca2f9f1462e3b60e56351bc466acda448c5ea50d
+        dest: _flatpak_deps/imguicolortextedit
+      - type: git
+        url: https://github.com/nlohmann/json.git
+        tag: v3.12.0
+        commit: 55f93686c01528224f448c19128836e7df245f72
+        dest: _flatpak_deps/json
+      - type: git
+        url: https://github.com/Dav1dde/glad.git
+        tag: v2.0.8
+        commit: 73db193f853e2ee079bf3ca8a64aa2eaf6459043
+        dest: _flatpak_deps/glad
+      - type: git
+        url: https://github.com/richgel999/miniz.git
+        tag: 3.1.2
+        commit: 77d0dce8627735138c51770d1799a1ef48f2117d
+        dest: _flatpak_deps/miniz
+      - type: git
+        url: https://github.com/chriskohlhoff/asio.git
+        tag: asio-1-39-0
+        commit: 190a8d8daf1cc62909b4e0c72ff491ba264ca98e
+        dest: _flatpak_deps/asio
+      - type: git
+        url: https://github.com/yhirose/cpp-httplib.git
+        tag: v0.66.0
+        commit: cdcd2ac6e6d5548b5a9130fb39ab76d2c6c614b0
+        dest: _flatpak_deps/httplib
