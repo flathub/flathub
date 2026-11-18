@@ -26,55 +26,119 @@ finish-args:
   - --system-talk-name=org.freedesktop.NetworkManager
   - --filesystem=xdg-documents/Moonfin:ro
 
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/*.la
+  - /lib/*.a
+
 modules:
+  # media_kit_video links libmpv through pkg-config, and neither SDK ships it.
+  - name: mpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dbuild-date=false
+      - -Dmanpage-build=disabled
+      - -Dlua=disabled
+      - -Djavascript=disabled
+      - -Dvaapi=enabled
+      - -Dcuda-hwaccel=enabled
+      - -Dpulse=enabled
+      - -Dalsa=enabled
+      - -Duchardet=enabled
+    cleanup:
+      - /share
+    sources:
+      - type: git
+        url: https://github.com/mpv-player/mpv.git
+        tag: v0.42.0
+        commit: b985c3634ef056b185e3f13c7ac597b3611f5774
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+    modules:
+      - name: libass
+        config-opts:
+          - --enable-shared
+          - --disable-static
+        sources:
+          - type: git
+            url: https://github.com/libass/libass.git
+            tag: 0.17.5
+            commit: 64ebcac709d949e6059bdacf5356c3af7848e8e5
+            x-checker-data:
+              type: git
+              tag-pattern: ^([\d.]+)$
+      - name: uchardet
+        buildsystem: cmake-ninja
+        config-opts:
+          - -DCMAKE_BUILD_TYPE=Release
+          - -DBUILD_BINARY=OFF
+          - -DBUILD_STATIC=OFF
+          - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+        cleanup:
+          - /share
+        sources:
+          - type: archive
+            url: https://www.freedesktop.org/software/uchardet/releases/uchardet-0.0.8.tar.xz
+            sha256: e97a60cfc00a1c147a674b097bb1422abd9fa78a2d9ce3f3fdcc2e78a34ac5f0
+            x-checker-data:
+              type: html
+              url: https://www.freedesktop.org/software/uchardet/releases/
+              version-pattern: uchardet-(\d+\.\d+\.\d+)\.tar\.xz
+              url-template: https://www.freedesktop.org/software/uchardet/releases/uchardet-$version.tar.xz
+      - name: libplacebo
+        buildsystem: meson
+        config-opts:
+          - -Dvulkan=enabled
+          - -Dshaderc=enabled
+          - -Ddemos=false
+          - -Dtests=false
+        sources:
+          - type: git
+            url: https://code.videolan.org/videolan/libplacebo.git
+            tag: v7.387.0
+            commit: 451d8ea5661c868562725e6500deda7fdd4e9a1e
+            x-checker-data:
+              type: git
+              tag-pattern: ^v([\d.]+)$
+
   - name: moonfin
     buildsystem: simple
     build-options:
-      #build-args:
-      #  - --share=network
+      arch:
+        x86_64:
+          env:
+            BUNDLE_PATH: build/linux/x64/release/bundle
+        aarch64:
+          env:
+            BUNDLE_PATH: build/linux/arm64/release/bundle
       append-path: /usr/lib/sdk/llvm23/bin:/var/lib/flutter/bin
       env:
         CC: clang
         CXX: clang++
         PUB_CACHE: /run/build/moonfin/.pub-cache
     build-commands:
-      - mkdir -p /app/bin /app/moonfin /app/share/applications /app/share/metainfo /app/share/icons/hicolor/512x512/apps
+      # Writes the plugin registrant files Moonfin keeps out of git, from the pre-fetched pub cache.
+      - setup-flutter.sh
       - flutter build linux --release --no-pub --dart-define=DISTRIBUTION_CHANNEL=linux
-      #- flutter build linux --release --dart-define=DISTRIBUTION_CHANNEL=linux --verbose
-      - ./build_for_flathub.sh
-      - cp -r . /app/moonfin/
-      - |
-        cat > /app/bin/moonfin << 'EOFRUN'
-        #!/bin/sh
-        # The moonfin script finds its libraries next to itself, so call it by its real path rather than a symlink.
-        exec /app/moonfin/moonfin "$@"
-        EOFRUN
-      - chmod +x /app/bin/moonfin
-      - cp io.moonfin.moonfin.png /app/share/icons/hicolor/512x512/apps/
-      - cp io.moonfin.moonfin.desktop /app/share/applications/
-      - cp io.moonfin.moonfin.metainfo.xml /app/share/metainfo/
+      # libmpv and everything it needs live in /app/lib, which the loader already searches.
+      - mkdir -p /app/moonfin /app/bin
+      - cp -a ${BUNDLE_PATH}/. /app/moonfin/
+      - ln -s /app/moonfin/moonfin /app/bin/moonfin
+      - install -Dm644 assets/icons/moonfin.png /app/share/icons/hicolor/512x512/apps/io.moonfin.moonfin.png
+      - install -Dm644 assets/flathub/io.moonfin.moonfin.desktop /app/share/applications/io.moonfin.moonfin.desktop
+      - install -Dm644 assets/flathub/io.moonfin.moonfin.metainfo.xml /app/share/metainfo/io.moonfin.moonfin.metainfo.xml
     sources:
       - type: git
         url: https://github.com/Moonfin-Client/Moonfin-Core.git
-        tag: 3.0.0
-        commit: eb43b626f6f9239e1dd050e529de28702b08038c
-        only-arches:
-          - x86_64
+        tag: 3.1.0
+        commit: 0e8f94a32200508a4e213fde37bfc942147fe3da
         x-checker-data:
           type: git
           tag-pattern: '^([0-9.]+)$'
-      - type: file
-        path: build_for_flathub.sh
-      - type: file
-        url: https://raw.githubusercontent.com/Moonfin-Client/Moonfin-Core/f4752c9d2eda320d3af28582a39af5a7b584579e/assets/flathub/io.moonfin.moonfin.desktop
-        sha256: 38e8f7b9cea1d7b6e4a5410dfbe1a7963045dfa8da69103d3f9dcf567f8440da
-      - type: file
-        url: https://raw.githubusercontent.com/Moonfin-Client/Moonfin-Core/f4752c9d2eda320d3af28582a39af5a7b584579e/assets/flathub/io.moonfin.moonfin.metainfo.xml
-        sha256: c42fd68abcdf5b5b0d7f08d1174f962a6a9ea3ccb20a5753ba49db86c2545d53
-      - type: file
-        url: https://raw.githubusercontent.com/Moonfin-Client/Moonfin-Core/22e306a2b318ebda48307b55ab1a3e08fabda995/assets/icons/moonfin.png
-        sha256: 7ce97a2c5083b67220a4725329fa2ddc01c5dd9634362c94a6c5f9b853d78991
-        dest-filename: io.moonfin.moonfin.png
       - generated/sources/pubspec.json
     modules:
       - generated/modules/flutter-sdk-3.47.7.json
