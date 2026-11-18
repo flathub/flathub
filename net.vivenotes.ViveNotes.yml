@@ -8,7 +8,7 @@ sdk-extensions:
 command: vivenotes
 finish-args:
   - --socket=wayland
-  - --socket=fallback-x11
+  - --socket=x11
   - --share=ipc
   - --share=network
   - --device=dri
@@ -41,15 +41,16 @@ modules:
       - --with-vulkan
       - --with-wayland-protocols=/usr/share/wayland-protocols
       - --disable-warnings-as-errors
+      - --with-conf-name=release
     make-args:
       - -j1
       - images
-      - CONF=linux-x86_64-server-release
+      - CONF=release
       - JOBS=$(FLATPAK_BUILDER_N_JOBS)
     post-install:
       - >-
-        build/linux-x86_64-server-release/images/jdk/bin/jlink
-        --module-path build/linux-x86_64-server-release/images/jmods
+        build/release/images/jdk/bin/jlink
+        --module-path build/release/images/jmods
         --add-modules "$(xargs < jb/project/tools/common/modules.list | sed 's/ //g')"
         --no-man-pages --generate-cds-archive
         --output ${FLATPAK_DEST}/jbr
@@ -97,7 +98,8 @@ modules:
     sources:
       - type: git
         url: https://github.com/CrownByte0b/ByteInk.git
-        commit: 019ebc81b0f43ca3ca81ea4596645c22dabd57b8
+        tag: v0.2.0
+        commit: 3f34dba14f073ffbf758f9c93c3214267bd4d05a
         dest: byteink
       - type: patch
         path: patches/byteink-install-libink.patch
@@ -142,6 +144,14 @@ modules:
         JAVA_HOME: /usr/lib/sdk/openjdk/jvm/openjdk-27
         GRADLE_USER_HOME: /run/build/vivenotes/gradle-home
         VIVE_OFFLINE_REPOSITORY: /run/build/vivenotes/offline-repository
+      # ByteInk's name for the platform whose libink.so (built above) the loader jar bundles.
+      arch:
+        x86_64:
+          env:
+            BYTEINK_PLATFORM: linux-x86_64
+        aarch64:
+          env:
+            BYTEINK_PLATFORM: linux-arm64
     build-commands:
       - rm gradle/gradle-daemon-jvm.properties
       - >-
@@ -149,8 +159,11 @@ modules:
         --init-script packaging/flathub/offline-repository.init.gradle.kts
         -Porg.gradle.java.installations.auto-download=false
         -PbyteinkCompositePath=byteink
-        -PbyteinkBundledPlatforms=linux-x86_64
+        -PbyteinkBundledPlatforms=${BYTEINK_PLATFORM}
         -PbyteinkLinuxLibrary=/app/lib/libink.so
+        -PbyteinkLinuxArm64Library=/app/lib/libink.so
+        -PviveConverterDir=onenote/vive-converter
+        -PviveConverterLibrary=onenote/library/libvive_converter.so
         -Pvive.googleDesktopClientId=767091346691-f4qam7qkmglevkc70vr6vo4g2t139t6o.apps.googleusercontent.com
         :desktopApp:stageFlatpak
       - >-
@@ -160,11 +173,39 @@ modules:
     sources:
       - type: git
         url: https://github.com/CrownByte0b/viveNotes-multiplataform.git
-        commit: 194451a03b4e8a0e904a9e74f456713c81fe1b20
+        tag: v1.2.1
+        commit: 681d208ad7db8c76721ad68a44f4fc76f3bc44ec
       - type: git
         url: https://github.com/CrownByte0b/ByteInk.git
-        commit: 019ebc81b0f43ca3ca81ea4596645c22dabd57b8
+        tag: v0.2.0
+        commit: 3f34dba14f073ffbf758f9c93c3214267bd4d05a
         dest: byteink
+      # File ▸ Import ▸ Notebook: the OneNote converter's JNI library from its release, built from
+      # this tag with the parser revision below (its BUILD-INFO.json). The build copies the library
+      # and both projects' licences into the app.
+      - type: git
+        url: https://github.com/CrownByte0b/vive-converter.git
+        tag: v1.1.1
+        commit: ae843a4c3e2ccfc964b61ddcc272f3fd3dc1e535
+        dest: onenote/vive-converter
+      - type: git
+        url: https://github.com/msiemens/onenote.rs.git
+        commit: fa4d7a044324af3bfe68727704a9789a08b36a3c
+        dest: onenote/onenote.rs
+      - type: archive
+        only-arches:
+          - x86_64
+        url: https://github.com/CrownByte0b/vive-converter/releases/download/v1.1.1/vive-converter-1.1.1-x86_64-unknown-linux-gnu.zip
+        sha256: 4d2bab6afa64c4ae7324142f5f0613a3fa5ac18ca4ac6eace7b2676281c56b6d
+        strip-components: 0
+        dest: onenote/library
+      - type: archive
+        only-arches:
+          - aarch64
+        url: https://github.com/CrownByte0b/vive-converter/releases/download/v1.1.1/vive-converter-1.1.1-aarch64-unknown-linux-gnu.zip
+        sha256: 32909370a29db0d5e78c6d1c0ead423c753c75e453b0761df9e43d7246b92124
+        strip-components: 0
+        dest: onenote/library
       - type: archive
         url: https://services.gradle.org/distributions/gradle-9.8.2-bin.zip
         sha256: 21bd5da2de49b642904077f38c0efdc7778e92b3ed0889392dca61b97e389607
