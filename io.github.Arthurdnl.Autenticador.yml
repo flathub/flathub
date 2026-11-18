@@ -1,0 +1,88 @@
+id: io.github.Arthurdnl.Autenticador
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: autenticador
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  # aba Gerador: consulta CEPs reais no ViaCEP
+  - --share=network
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - '*.a'
+
+modules:
+  # ferramentas para compilar o zxing-cpp; não vão para o app final
+  - name: python3-build-tools
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
+        --prefix=${FLATPAK_DEST} --no-build-isolation scikit-build-core nanobind
+    cleanup:
+      - '*'
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/cb/8e/f13e5d7dc75fc979464d5bcc1bc762b07133df3d09d667c34727dfd8b0e8/scikit_build_core-1.1.2-py3-none-any.whl
+        sha256: 7f4f959a467692db50bdd1ea7ce1507f2c7972e6023b753ee302d169bc4cec85
+      - type: file
+        url: https://files.pythonhosted.org/packages/d8/72/16a606cbea58be568475f450ece121b3fd62cffb390fd0f8eb8b410904f5/nanobind-2.15.0-py3-none-any.whl
+        sha256: 91dae9305c6242cf63ab11a5c41594e234e7a22fd9fcc2c5c4ba80724abc1787
+      - type: file
+        url: https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl
+        sha256: d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
+      - type: file
+        url: https://files.pythonhosted.org/packages/f1/d9/7fb5aa316bc299258e68c73ba3bddbc499654a07f151cba08f6153988714/pathspec-1.1.1-py3-none-any.whl
+        sha256: a00ce642f577bf7f473932318056212bc4f8bfdf53128c78bbd5af0b9b20b189
+
+  # leitura e geração de QR code
+  - name: python3-zxing-cpp
+    buildsystem: simple
+    build-options:
+      env:
+        # nada de baixar dependências da internet durante o build
+        CMAKE_ARGS: -DZXING_DEPENDENCIES=LOCAL
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
+        --prefix=${FLATPAK_DEST} --no-build-isolation zxing-cpp
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/b9/30/ad0e0352c593712ebb47143571ff11b130812e2852d7540e7c80cdf23340/zxing_cpp-3.1.1.tar.gz
+        sha256: 1051a521b21a9fe206702ad4186aeb195154e3e1badcd99576d030723f36382b
+
+  # AES-256-GCM do cofre (o scrypt vem do próprio Python)
+  - name: python3-pycryptodomex
+    buildsystem: simple
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-index --find-links="file://${PWD}"
+        --prefix=${FLATPAK_DEST} --no-build-isolation pycryptodomex
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/f3/c2/f5855412372e47d635599a97c00cfcf9fc40accac9436a11bf9ded19f859/pycryptodomex-3.24.2.tar.gz
+        sha256: e4dbc29e2575365d15e272f769329106277649aea081e2119cf43d66950f8f8f
+
+  - name: autenticador
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 autenticador.py ${FLATPAK_DEST}/share/autenticador/autenticador.py
+      - install -Dm755 autenticador-launcher ${FLATPAK_DEST}/bin/autenticador
+      - install -Dm644 data/${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 data/${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 data/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+        ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+    sources:
+      - type: git
+        url: https://github.com/Arthurdnl/autenticador.git
+        tag: v1.0.0
+        commit: 89c4e972a18ea2b5a3af109a9e114447cd04c39d
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - type: script
+        dest-filename: autenticador-launcher
+        commands:
+          - exec python3 /app/share/autenticador/autenticador.py "$@"
