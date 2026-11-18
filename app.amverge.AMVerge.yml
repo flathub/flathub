@@ -2,6 +2,9 @@ app-id: app.amverge.AMVerge
 runtime: org.gnome.Platform
 runtime-version: '51'
 sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node22
 command: amverge
 
 finish-args:
@@ -29,38 +32,37 @@ finish-args:
 modules:
   - name: amverge
     buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node22/bin
+      env:
+        CARGO_HOME: /run/build/amverge/cargo
+        npm_config_cache: /run/build/amverge/flatpak-node/npm-cache
+        npm_config_offline: 'true'
     build-commands:
-      # Extract Debian package contents safely into /app
-      - ar x amverge.deb
-      - tar -xf data.tar.gz
-      - cp -r usr/* /app/
+      # 1. Build React frontend offline
+      - |
+        cd frontend
+        npm ci --offline --cache /run/build/amverge/flatpak-node/npm-cache
+        npm run build
 
-      # Install desktop file, metainfo, and icons to Flatpak standard paths
-      - install -Dm644 app.amverge.AMVerge.desktop /app/share/applications/app.amverge.AMVerge.desktop
-      - install -Dm644 app.amverge.AMVerge.metainfo.xml /app/share/metainfo/app.amverge.AMVerge.metainfo.xml
-      - install -Dm644 app.amverge.AMVerge.png /app/share/icons/hicolor/128x128/apps/app.amverge.AMVerge.png
-      - install -Dm644 app.amverge.AMVerge-256.png /app/share/icons/hicolor/256x256/apps/app.amverge.AMVerge.png
+      # 2. Build Rust / Tauri desktop binary offline
+      - |
+        cd frontend/src-tauri
+        cargo build --release --offline
 
-      # Ensure lowercase executable symlink in /app/bin
+      # 3. Install desktop binary and lowercase symlink
+      - install -Dm755 frontend/src-tauri/target/release/AMVerge /app/bin/AMVerge
       - ln -sf /app/bin/AMVerge /app/bin/amverge
 
-      # Clean up build artifacts
-      - rm -rf control.tar.gz data.tar.gz debian-binary usr
+      # 4. Install upstream desktop file, AppStream metainfo, and icons
+      - install -Dm644 flatpak/app.amverge.AMVerge.desktop /app/share/applications/app.amverge.AMVerge.desktop
+      - install -Dm644 flatpak/app.amverge.AMVerge.metainfo.xml /app/share/metainfo/app.amverge.AMVerge.metainfo.xml
+      - install -Dm644 flatpak/icons/app.amverge.AMVerge.png /app/share/icons/hicolor/128x128/apps/app.amverge.AMVerge.png
+      - install -Dm644 flatpak/icons/app.amverge.AMVerge-256.png /app/share/icons/hicolor/256x256/apps/app.amverge.AMVerge.png
 
     sources:
-      - type: file
-        url: https://github.com/AMVerge-team/AMVerge/releases/download/v2.0.2/AMVerge_2.0.2_amd64.deb
-        sha256: 64b6f23c2267f126344d7459bd07a3b53b6c9121147846ac35ffaa90851d2f78
-        dest-filename: amverge.deb
-
-      - type: file
-        path: app.amverge.AMVerge.desktop
-
-      - type: file
-        path: app.amverge.AMVerge.metainfo.xml
-
-      - type: file
-        path: icons/app.amverge.AMVerge.png
-
-      - type: file
-        path: icons/app.amverge.AMVerge-256.png
+      - type: git
+        url: https://github.com/AMVerge-team/AMVerge.git
+        commit: f79950eaa953f385269360653d2c6fd744e2a34f
+      - cargo-sources.json
+      - node-sources.json
