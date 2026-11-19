@@ -2,59 +2,51 @@ app-id: io.github.wer_core.cl-opensource
 runtime: org.freedesktop.Platform
 runtime-version: '26.08'
 sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet10
 command: CL.Avalonia
 
 finish-args:
   - --share=network
   - --share=ipc
-  - --socket=wayland
-  - --socket=fallback-x11
+  - --socket=x11
   - --socket=pulseaudio
   - --device=dri
-  - --filesystem=xdg-data/cl-launcher:create
-  - --filesystem=~/.clminecraft:create
   - --filesystem=~/.minecraft:create
-  - --filesystem=xdg-run/pipewire-0
   - --filesystem=xdg-run/discord-ipc-0
-  - --talk-name=org.freedesktop.Notifications
-  - --talk-name=org.freedesktop.FileManager1
 
 modules:
-  - name: clegendary-launcher
+  - name: dotnet
     buildsystem: simple
     build-commands:
-      - chmod +x *.AppImage
-      - ./*.AppImage --appimage-extract
-      - install -d /app/bin /app/share/applications /app/share/metainfo /app/share/icons/hicolor/512x512/apps
-      - cp -r squashfs-root/usr/bin/* /app/bin/
-      - chmod +x /app/bin/CL.Avalonia
-      - install -Dm644 io.github.wer_core.cl-opensource.desktop /app/share/applications/io.github.wer_core.cl-opensource.desktop
-      - install -Dm644 io.github.wer_core.cl-opensource.metainfo.xml /app/share/metainfo/io.github.wer_core.cl-opensource.metainfo.xml
-      - install -Dm644 io.github.wer_core.cl-opensource.png /app/share/icons/hicolor/512x512/apps/io.github.wer_core.cl-opensource.png
+      - /usr/lib/sdk/dotnet10/bin/install.sh
+
+  - name: clegendary-launcher
+    buildsystem: simple
+    build-options:
+      prepend-path: /usr/lib/sdk/dotnet10/bin
+      prepend-ld-library-path: /usr/lib/sdk/dotnet10/lib
+      env:
+        DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+        DOTNET_NOLOGO: 'true'
+        DOTNET_ROOT: /usr/lib/sdk/dotnet10/lib
+    build-commands:
+      - sed -i 's|<TargetFrameworks>net8.0;net10.0</TargetFrameworks>|<TargetFramework>net10.0</TargetFramework>|' CL.Core/CL.Core.csproj
+      - |
+        RID=$([ "$(uname -m)" = "aarch64" ] && echo "linux-arm64" || echo "linux-x64")
+        /usr/lib/sdk/dotnet10/bin/dotnet publish CL.Avalonia/CL.Avalonia.csproj -c Release -r "$RID" --self-contained false --source ./nuget-sources -p:PublishSingleFile=false -o /app/lib/clegendary-launcher
+      - |
+        cat << 'EOF' > /app/bin/CL.Avalonia
+        #!/bin/sh
+        export DOTNET_ROOT=/app/lib/dotnet
+        exec /app/lib/clegendary-launcher/CL.Avalonia "$@"
+        EOF
+        chmod +x /app/bin/CL.Avalonia
+      - install -Dm644 distribution/flatpak/io.github.wer_core.cl-opensource.desktop /app/share/applications/io.github.wer_core.cl-opensource.desktop
+      - install -Dm644 distribution/flatpak/io.github.wer_core.cl-opensource.metainfo.xml /app/share/metainfo/io.github.wer_core.cl-opensource.metainfo.xml
+      - install -Dm644 distribution/flatpak/io.github.wer_core.cl-opensource.png /app/share/icons/hicolor/512x512/apps/io.github.wer_core.cl-opensource.png
     sources:
-      - type: file
-        only-arches: [x86_64]
-        dest-filename: CLegendaryLauncher-x64.AppImage
-        url: https://github.com/WER-CORE/CL-Win-Edition--Update/releases/download/v1.1.2/CLegendaryLauncher-x64.AppImage
-        sha256: cda9c529745ce437b028951cd019214ba1546ccc780fb512ea69e25559874660
-        x-checker-data:
-          type: json
-          url: https://api.github.com/repos/WER-CORE/CL-Win-Edition--Update/releases
-          version-query: '[.[] | select(.prerelease == false)][0].tag_name | sub("^v"; "")'
-          url-query: '"https://github.com/WER-CORE/CL-Win-Edition--Update/releases/download/v" + $version + "/CLegendaryLauncher-x64.AppImage"'
-      - type: file
-        only-arches: [aarch64]
-        dest-filename: CLegendaryLauncher-arm64.AppImage
-        url: https://github.com/WER-CORE/CL-Win-Edition--Update/releases/download/v1.1.2/CLegendaryLauncher-arm64.AppImage
-        sha256: 2bd0e5301088bb15bfb252dba827d3f11fb286cbf607cc6dd41a0b691b623b39
-        x-checker-data:
-          type: json
-          url: https://api.github.com/repos/WER-CORE/CL-Win-Edition--Update/releases
-          version-query: '[.[] | select(.prerelease == false)][0].tag_name | sub("^v"; "")'
-          url-query: '"https://github.com/WER-CORE/CL-Win-Edition--Update/releases/download/v" + $version + "/CLegendaryLauncher-arm64.AppImage"'
-      - type: file
-        path: io.github.wer_core.cl-opensource.desktop
-      - type: file
-        path: io.github.wer_core.cl-opensource.metainfo.xml
-      - type: file
-        path: io.github.wer_core.cl-opensource.png
+      - type: git
+        url: https://github.com/WER-CORE/CL-OpenSource.git
+        commit: f4ecad0bcdd51a8eadcc476ffefeb56e3f0dfb81
+      - nuget-sources.json
