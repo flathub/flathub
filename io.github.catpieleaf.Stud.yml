@@ -1,0 +1,111 @@
+app-id: io.github.catpieleaf.Stud
+base: io.qt.qtwebengine.BaseApp
+base-version: '6.11'
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+command: stud
+separate-locales: false
+
+finish-args:
+  - --device=dri
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
+  - --env=QTWEBENGINE_RESOURCES_PATH=/app/resources
+  - --env=QTWEBENGINE_LOCALES_PATH=/app/translations/qtwebengine_locales
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    directory: lib/ffmpeg
+    version: '25.08'
+    add-ld-path: .
+    autodownload: true
+    autodelete: false
+
+modules:
+  - name: sdl3
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DSDL_TESTS=OFF
+      - -DSDL_EXAMPLES=OFF
+      - -DSDL_STATIC=OFF
+      - -DSDL_WAYLAND=ON
+      - -DSDL_X11=ON
+      - -DSDL_PIPEWIRE=ON
+      - -DSDL_PULSEAUDIO=ON
+    sources:
+      - type: archive
+        url: https://github.com/libsdl-org/SDL/releases/download/release-3.4.20/SDL3-3.4.20.tar.gz
+        sha256: f3bb06f55bed9557227a700af2ea62e49497ebdf58037732a731a5fb3ef8581f
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+      - /share/licenses/SDL3
+
+  - name: wl-clipboard
+    buildsystem: meson
+    config-opts:
+      - -Dfishcompletiondir=no
+      - -Dzshcompletiondir=no
+    sources:
+      - type: archive
+        url: https://github.com/bugaevc/wl-clipboard/archive/refs/tags/v2.2.1.tar.gz
+        sha256: 6eb8081207fb5581d1d82c4bcd9587205a31a3d47bea3ebeb7f41aa1143783eb
+    cleanup:
+      - /share/man
+      - /share/bash-completion
+
+  - name: rosemary
+    buildsystem: simple
+    build-options:
+      append-path: /run/build/rosemary/toolchain/bin
+      env:
+        CARGO_HOME: /run/build/rosemary/cargo
+        CARGO_NET_OFFLINE: 'true'
+    build-commands:
+      - rust/install.sh --prefix=/run/build/rosemary/toolchain --disable-ldconfig
+        --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu
+      - cargo --offline build --release --locked --package rosemary --bin rosemary
+      - install -Dm755 target/release/rosemary -t /app/libexec/stud/
+      - install -Dm644 LICENSE /app/share/licenses/io.github.catpieleaf.Stud/rosemary/LICENSE-Rosemary.txt
+    sources:
+      - type: git
+        url: https://github.com/CatPieLeaf/rosemary-stud.git
+        commit: 5a9f71e4689145be5248d1312048d199941fbf61
+      - type: archive
+        url: https://static.rust-lang.org/dist/2026-11-12/rust-1.100.0-x86_64-unknown-linux-gnu.tar.xz
+        sha256: 98ee6bec240e1cfe944f17e7092412dc5ef6e008484bb668c6936d35a7d15acd
+        dest: rust
+        only-arches:
+          - x86_64
+      - rosemary-cargo-sources.json
+
+  - name: stud
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DSTUD_BUILD_ROSEMARY=OFF
+      - -DSTUD_BUILD_TESTS=OFF
+      - -DSTUD_VERSION=2.0.4
+      - -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+      - -DFETCHCONTENT_SOURCE_DIR_MINIZ=/run/build/stud/deps/miniz
+    post-install:
+      - mkdir -p /app/share/licenses/io.github.catpieleaf.Stud
+      - cp -a /app/share/licenses/stud/. /app/share/licenses/io.github.catpieleaf.Stud/
+      - rm -rf /app/share/licenses/stud
+    sources:
+      - type: archive
+        url: https://github.com/CatPieLeaf/Stud/archive/refs/tags/2.0.4.tar.gz
+        sha256: 675a372dd31930115dd4b3ba69b622b7de2f63f5b123d4e8cfa5a28893b9b7cf
+      - type: archive
+        url: https://github.com/richgel999/miniz/archive/refs/tags/3.1.2.tar.gz
+        sha256: 98468f8924934b723276680f85238b6c78bf1f8b49b4459cc9b7214a20e2e9fb
+        dest: deps/miniz
