@@ -1,0 +1,62 @@
+# The Flatpak of DriveCraft. `scripts/flatpak.sh` builds it from this
+# checkout. `scripts/flatpak.sh flathub <tag>` writes the version for the
+# Flathub repository, which builds a release tag.
+id: io.github.fballiano.drivecraft
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: drivecraft
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # The sign-in in the browser and the sync.
+  - --share=network
+  # The synced folders: ~/DriveCraft/<account> by default, or a folder that
+  # the user selects. DriveCraft also reads the configuration of other
+  # cloud clients (~/.config/onedrive, ~/.dropbox), to refuse their folders.
+  - --filesystem=home
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+modules:
+  - name: drivecraft
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/drivecraft/cargo
+        CARGO_NET_OFFLINE: 'true'
+        # build.rs copies this rclone and downloads nothing.
+        DRIVECRAFT_RCLONE_BIN: /run/build/drivecraft/rclone/rclone
+    build-commands:
+      - cargo build --release --locked --offline -p drivecraft
+      - install -Dm755 target/release/drivecraft /app/bin/drivecraft
+      # find_binary looks for rclone next to the DriveCraft binary.
+      - install -Dm755 rclone/rclone /app/bin/rclone
+      - install -Dm644 packaging/linux/io.github.fballiano.drivecraft.desktop -t /app/share/applications
+      - install -Dm644 packaging/linux/io.github.fballiano.drivecraft.metainfo.xml -t /app/share/metainfo
+      - cp -r packaging/linux/icons /app/share/icons
+      - install -Dm644 LICENSE-MIT LICENSE-APACHE ATTRIBUTION.md -t /app/share/licenses/io.github.fballiano.drivecraft
+      - install -Dm644 licenses/rclone.txt /app/share/licenses/io.github.fballiano.drivecraft/rclone-LICENSE.txt
+      - install -Dm644 crates/app/assets/fonts/OFL-Inter.txt /app/share/licenses/io.github.fballiano.drivecraft/Inter-OFL.txt
+      - install -Dm644 crates/app/assets/icons/LICENSE-lucide.txt /app/share/licenses/io.github.fballiano.drivecraft/Lucide-LICENSE.txt
+    sources:
+      - type: git
+        url: https://github.com/fballiano/drivecraft.git
+        tag: v0.1.3
+        commit: bdff241c3323de5fb62ab08b3467668beb7afce1
+      - cargo-sources.json
+      # The rclone release that crates/app/build.rs pins (RCLONE_VERSION),
+      # with the checksums from its SHA256SUMS file.
+      - type: archive
+        only-arches: [x86_64]
+        url: https://downloads.rclone.org/v1.76.0/rclone-v1.76.0-linux-amd64.zip
+        sha256: b00f00b3266c3764413afe599d3ec316f6f43b3e0ea8a0bc1d186d2133e46df7
+        dest: rclone
+      - type: archive
+        only-arches: [aarch64]
+        url: https://downloads.rclone.org/v1.76.0/rclone-v1.76.0-linux-arm64.zip
+        sha256: ee169016675e23a69d77240565133ff7dbc9b33d16fa8f7053d4af39f1eaeb78
+        dest: rclone
