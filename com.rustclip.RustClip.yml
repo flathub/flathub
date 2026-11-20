@@ -1,0 +1,158 @@
+# RustClip on Flathub: packages the signed release binary (closed source,
+# `LicenseRef-RustClip-EULA`); nothing is compiled from RustClip's source.
+# The `rustclip` module's sources between the "generated" marks are written by
+# `scripts/gen_linux_metadata.py` from the signed release manifest.
+app-id: com.rustclip.RustClip
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: rustclip
+finish-args:
+  # The panel window is positioned through XWayland (winit can't place a
+  # native Wayland window), and the clipboard and the focused window are read
+  # through X11 where the compositor offers no data-control (GNOME).
+  - --socket=x11
+  - --socket=wayland
+  - --share=ipc
+  # Link previews, update notes, optional sync between the user's own devices
+  # on the local network (mDNS, TCP) and opt-in usage statistics.
+  - --share=network
+  # The tray icon (StatusNotifierItem).
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Keeps the database and sync keys in the desktop's keyring.
+  - --talk-name=org.freedesktop.secrets
+  # KDE: frees Super+V from Klipper for the open-panel key, only when the user
+  # clicks "Use Super+V" (and gives it back when the key changes).
+  - --talk-name=org.kde.kglobalaccel
+modules:
+  # Text in images (OCR, off until the user turns it on): RustClip runs the
+  # `tesseract` command.
+  - name: leptonica
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_PROG=OFF
+      - -DSW_BUILD=OFF
+    # Its BSD-style licence asks for the text with the binaries; flatpak-builder
+    # finds no file of this name by itself.
+    license-files:
+      - leptonica-license.txt
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://github.com/DanBloomberg/leptonica/releases/download/1.87.0/leptonica-1.87.0.tar.gz
+        sha256: c73363397f96eb1295602bf44d708a994ad42046c791bf03ea0505d829bdb6a7
+        x-checker-data:
+          type: anitya
+          project-id: 1549
+          stable-only: true
+          url-template: https://github.com/DanBloomberg/leptonica/releases/download/$version/leptonica-$version.tar.gz
+
+  - name: tesseract
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_TRAINING_TOOLS=OFF
+      - -DBUILD_TESTS=OFF
+      - -DDISABLE_CURL=ON
+      - -DDISABLE_ARCHIVE=ON
+      - -DGRAPHICS_DISABLED=ON
+      - -DSW_BUILD=OFF
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+      - /share/tessdata/configs
+      - /share/tessdata/tessconfigs
+    sources:
+      - type: archive
+        url: https://github.com/tesseract-ocr/tesseract/archive/refs/tags/5.5.4.tar.gz
+        sha256: a8dbf8b8c8ee427ff6ad1d99116502feaf59440af1adb893caf60a6576826cf4
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/tesseract-ocr/tesseract/releases/latest
+          version-query: .tag_name
+          url-query: '"https://github.com/tesseract-ocr/tesseract/archive/refs/tags/" + $version + ".tar.gz"'
+
+  - name: tessdata
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 eng.traineddata /app/share/tessdata/eng.traineddata
+    sources:
+      - type: file
+        url: https://github.com/tesseract-ocr/tessdata_fast/raw/4.1.0/eng.traineddata
+        sha256: 7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2
+
+  - name: rustclip
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 rustclip /app/bin/rustclip
+      - install -Dm644 com.rustclip.RustClip.desktop /app/share/applications/com.rustclip.RustClip.desktop
+      - install -Dm644 com.rustclip.RustClip.metainfo.xml /app/share/metainfo/com.rustclip.RustClip.metainfo.xml
+      - install -Dm644 com.rustclip.RustClip.svg /app/share/icons/hicolor/scalable/apps/com.rustclip.RustClip.svg
+      - for s in 48 64 128 256; do install -Dm644 icon-${s}.png /app/share/icons/hicolor/${s}x${s}/apps/com.rustclip.RustClip.png; done
+      - install -Dm644 licenses.json /app/share/licenses/com.rustclip.RustClip/third-party-licenses.json
+    sources:
+      # --- generated sources: begin ---
+      - type: file
+        url: https://release.rustclip.com/releases/v1.10.0/rustclip-1.10.0-linux-x86_64
+        sha256: ff76d34ca16b87b1dbdf4f72770fe59155e6e78a641b6b45a2679f6b31e3359c
+        dest-filename: rustclip
+        only-arches:
+          - x86_64
+        x-checker-data:
+          type: json
+          url: https://release.rustclip.com/releases/manifest.json
+          version-query: .latest.version
+          url-query: '"https://release.rustclip.com/releases/" + .latest.builds["linux-x86_64"].filename'
+          is-main-source: true
+      - type: file
+        url: https://release.rustclip.com/releases/v1.10.0/rustclip-1.10.0-linux-aarch64
+        sha256: b0f4b39fb7cb12b0a6d18d990eb98e04e71e3becc0b9c78ab1c11d2a71bd87d5
+        dest-filename: rustclip
+        only-arches:
+          - aarch64
+        x-checker-data:
+          type: json
+          url: https://release.rustclip.com/releases/manifest.json
+          version-query: .latest.version
+          url-query: '"https://release.rustclip.com/releases/" + .latest.builds["linux-aarch64"].filename'
+      # --- generated sources: end ---
+      - type: file
+        url: https://release.rustclip.com/releases/v1.10.0/flatpak-com.rustclip.RustClip.desktop
+        sha256: cf4f5ad6630b779321b7a1aae6c82adbd02159c24b80e7abe1efda88b8d1a71b
+        dest-filename: com.rustclip.RustClip.desktop
+      - type: file
+        url: https://release.rustclip.com/releases/v1.10.0/flatpak-com.rustclip.RustClip.metainfo.xml
+        sha256: c553fe7bf5af1cb9825f9328f5a6bfe8975e81362c39a4d752a90dc734640ea8
+        dest-filename: com.rustclip.RustClip.metainfo.xml
+      - type: file
+        url: https://release.rustclip.com/releases/v1.10.0/flatpak-com.rustclip.RustClip.svg
+        sha256: a280ad1fd08981fdf4eeec917bdea486cbb7c61670ab66ef0bc7edb5440cbd8a
+        dest-filename: com.rustclip.RustClip.svg
+      - type: file
+        url: https://release.rustclip.com/releases/v1.10.0/flatpak-icon-48.png
+        sha256: 8a725ca53f656430691849e2d74cb62e15e0ee19745cf36edae5fd0869420c2f
+        dest-filename: icon-48.png
+      - type: file
+        url: https://release.rustclip.com/releases/v1.10.0/flatpak-icon-64.png
+        sha256: 871954398d8b2459742cefd6ed2118a253f7d95b56a6257c2b8876365ffdc21b
+        dest-filename: icon-64.png
+      - type: file
+        url: https://release.rustclip.com/releases/v1.10.0/flatpak-icon-128.png
+        sha256: e03105a7a4557dfa976cfb7cd56b29d4453e5ea448bc8d08b92da17a55be6b7e
+        dest-filename: icon-128.png
+      - type: file
+        url: https://release.rustclip.com/releases/v1.10.0/flatpak-icon-256.png
+        sha256: 6b9bd926d4dd4eb371b334533bed637875afde6af34bb9e6821f8616e20a5004
+        dest-filename: icon-256.png
+      - type: file
+        url: https://release.rustclip.com/releases/v1.10.0/flatpak-licenses.json
+        sha256: cccf6146141928efb4744b3d171921255a6b53944c29aafaa3748bb97e703518
+        dest-filename: licenses.json
