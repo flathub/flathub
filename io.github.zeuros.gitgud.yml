@@ -1,0 +1,84 @@
+app-id: io.github.zeuros.gitgud
+# Tauri app: the GNOME runtime provides WebKitGTK 4.1, GTK 3 and libsoup 3 the binary links to
+runtime: org.gnome.Platform
+runtime-version: "51"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node26
+command: gitgud
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --share=network
+  - --device=dri
+  - --filesystem=home
+  - --socket=ssh-auth
+
+modules:
+  - name: git
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      cflags: -Os -flto
+      ldflags: -flto
+    build-commands:
+      - make -j$FLATPAK_BUILDER_N_JOBS install prefix=/app NO_TCLTK=1 NO_PERL=1 NO_PYTHON=1 NO_GETTEXT=1 USE_LIBPCRE2=1 INSTALL_SYMLINKS=1 CFLAGS="$CFLAGS" LDFLAGS="$LDFLAGS"
+    cleanup:
+      - /share/gitweb
+      - /bin/scalar
+      - /bin/git-shell
+      - /bin/git-cvsserver
+      - /libexec/git-core/git-daemon
+      - /libexec/git-core/git-http-backend
+      - /libexec/git-core/git-http-fetch
+      - /libexec/git-core/git-http-push
+      - /libexec/git-core/git-imap-send
+      - /libexec/git-core/git-cvsserver
+      - /libexec/git-core/git-shell
+    sources:
+      - type: archive
+        url: https://www.kernel.org/pub/software/scm/git/git-2.56.1.tar.xz
+        sha256: f0b0bf89264b9bd2e1c640363e7529643989da76281600473c50745cd34a607f
+        x-checker-data:
+          type: anitya
+          project-id: 5350
+          stable-only: true
+          url-template: https://www.kernel.org/pub/software/scm/git/git-$version.tar.xz
+  - name: gitgud
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node26/bin
+      env:
+        CARGO_HOME: /run/build/gitgud/cargo
+        XDG_CACHE_HOME: /run/build/gitgud/flatpak-node/cache
+        npm_config_cache: /run/build/gitgud/flatpak-node/npm-cache
+        npm_config_offline: "true"
+        NG_CLI_ANALYTICS: "false"
+    build-commands:
+      # Install scripts only check or fetch prebuilt binaries, which the lockfile's platform packages already hold
+      - npm ci --offline --ignore-scripts
+      - npm run build:angular
+      # custom-protocol serves the built frontend, as `tauri build` does; without it the app loads the dev server URL
+      - cargo build --release --offline --features tauri/custom-protocol --manifest-path src-tauri/Cargo.toml
+      - install -Dm755 src-tauri/target/release/gitgud /app/bin/gitgud
+      - install -Dm644 build/flatpak/io.github.zeuros.gitgud.desktop
+          /app/share/applications/io.github.zeuros.gitgud.desktop
+      - install -Dm644 build/flatpak/io.github.zeuros.gitgud.metainfo.xml
+          /app/share/metainfo/io.github.zeuros.gitgud.metainfo.xml
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/io.github.zeuros.gitgud.png
+      - install -Dm644 src-tauri/icons/64x64.png /app/share/icons/hicolor/64x64/apps/io.github.zeuros.gitgud.png
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.zeuros.gitgud.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/io.github.zeuros.gitgud.png
+      - install -Dm644 src-tauri/icons/icon.png /app/share/icons/hicolor/512x512/apps/io.github.zeuros.gitgud.png
+
+    sources:
+      - type: archive
+        url: https://github.com/zeuros/gitgud/archive/refs/tags/v2.14.1.tar.gz
+        sha256: cec513eff0b7d584ffa4217f528749b1f2263255f6237b947bcee5cef972c8de
+
+      # Generated from the tag's lockfiles by flatpak-builder-tools: flatpak-cargo-generator and flatpak-node-generator
+      - cargo-sources.json
+      - node-sources.json
