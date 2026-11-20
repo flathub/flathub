@@ -1,0 +1,57 @@
+id: me.proton.Lumo
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: lumo-desktop
+
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+  - org.freedesktop.Sdk.Extension.rust-stable
+
+finish-args:
+  - --socket=wayland # Permission needed to show the window
+  - --socket=fallback-x11 # Permission needed to show the window on legacy windowing systems
+  - --device=dri # OpenGL, not necessary for all projects
+  - --share=ipc
+  - --share=network
+  - --socket=pulseaudio # Microphone
+  - --talk-name=org.kde.StatusNotifierWatcher # Tray icon
+  - --filesystem=xdg-run/tray-icon:create # Tray icon image
+  - --own-name=me.proton.lumo-app.SingleInstance
+
+build-options:
+  append-path: /usr/lib/sdk/node22/bin:/usr/lib/sdk/rust-stable/bin
+
+modules:
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+
+  - name: lumo-desktop
+    buildsystem: simple
+    build-options:
+      env:
+        HOME: /run/build/lumo-desktop
+        CARGO_HOME: /run/build/lumo-desktop/cargo
+        XDG_CACHE_HOME: /run/build/lumo-desktop/flatpak-node/cache
+        npm_config_offline: 'true'
+        npm_config_cache: /run/build/lumo-desktop/flatpak-node/npm-cache
+        LUMO_URL: https://lumo.proton.me
+    build-commands:
+      - npm ci --offline --legacy-peer-deps
+      - cargo --offline fetch --manifest-path src-tauri/Cargo.toml
+      - npm run tauri build -- --no-bundle -v
+      - install -Dm644 -t /app/share/metainfo/ me.proton.Lumo.metainfo.xml
+      - install -Dm755 -t /app/bin/ src-tauri/target/release/lumo-desktop
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/me.proton.Lumo.png
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/me.proton.Lumo.png
+      - install -Dm644 src-tauri/icons/app-icon.png /app/share/icons/hicolor/512x512/apps/me.proton.Lumo.png
+      - install -Dm644 -t /app/share/applications/ me.proton.Lumo.desktop
+    sources:
+      - type: git
+        url: https://github.com/ProtonLumo/lumo-desktop.git
+        commit: bd5e2c608bac61f215d4a2094e26ef88cb7bc1e0
+      - cargo-sources.json
+      - node-sources.json
+      - type: file
+        path: me.proton.Lumo.desktop
+      - type: file
+        path: me.proton.Lumo.metainfo.xml
