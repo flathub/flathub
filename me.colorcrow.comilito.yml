@@ -1,0 +1,70 @@
+id: me.colorcrow.comilito
+# GNOME's runtime carries WebKitGTK 4.1 (Tauri's webview) and GStreamer with the plugins its
+# <video> needs (VP8/VP9, Matroska/WebM, AV1, NVIDIA's decoders).
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node24
+command: comilito
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # OpenGL for WebKit, and the GPU for decoding and encoding videos (decisions 0051, 0052).
+  - --device=dri
+  # Audio output (kira, through cpal's PulseAudio host; PipeWire serves it too).
+  - --socket=pulseaudio
+  # Downloading audio and videos from links, and the yt-dlp and ffmpeg tools (decision 0019).
+  - --share=network
+  # Comilito Projects are folders with relative paths inside, in ~/Documents/Comilito by default but
+  # anywhere the user chooses. The file chooser portal would hand back per-file paths under 
+  # /run/user/…, which a project folder can't work with. Other disks and removable drives too.
+  # The app needs access to the real path; anywhere else, as a read-only copy Comilito refuses.
+  - --filesystem=home
+  - --filesystem=/media
+  - --filesystem=/run/media
+  - --filesystem=/mnt
+  # The OS media controls (MPRIS).
+  - --own-name=org.mpris.MediaPlayer2.comilito
+  # Required for "Show in folder" to correctly open the file manager
+  - --talk-name=org.freedesktop.FileManager1
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node24/bin
+
+modules:
+  - name: comilito
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/comilito/cargo
+        CARGO_NET_OFFLINE: 'true'
+        npm_config_cache: /run/build/comilito/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+        XDG_CACHE_HOME: /run/build/comilito/flatpak-node/cache
+    build-commands:
+      # The frontend (Vite builds the Svelte app into dist/).
+      - npm ci --offline
+      - npm run build
+      # The app, with the frontend built in.
+      - cargo build --release --locked --features tauri/custom-protocol --manifest-path src-tauri/Cargo.toml
+      - install -Dm755 src-tauri/target/release/comilito /app/bin/comilito
+      - mkdir -p /app/lib/Comilito
+      - cp -r src-tauri/resources/sample /app/lib/Comilito/sample
+      - install -Dm644 flatpak/me.colorcrow.comilito.desktop /app/share/applications/me.colorcrow.comilito.desktop
+      - install -Dm644 flatpak/me.colorcrow.comilito.metainfo.xml /app/share/metainfo/me.colorcrow.comilito.metainfo.xml
+      - |
+        for size in 32 48 64 128 256 512; do
+          install -Dm644 src-tauri/icons/${size}x${size}.png \
+            /app/share/icons/hicolor/${size}x${size}/apps/me.colorcrow.comilito.png
+        done
+    sources:
+      - type: git
+        url: https://github.com/RicardoEPRodrigues/Comilito.git
+        tag: v1.0.0
+        commit: 'd4e4fb94e4833007641421c7cd4142fc0f1ac3cc'
+      - cargo-sources.json
+      - node-sources.json
