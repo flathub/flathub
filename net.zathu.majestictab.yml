@@ -1,0 +1,60 @@
+app-id: net.zathu.majestictab
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node22
+command: majestictab
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=pulseaudio
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --device=input
+  - --require-version=1.16.0
+modules:
+  - name: majestictab
+    buildsystem: simple
+    build-options:
+      cflags: -pipe -g
+      cflags-override: true
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node22/bin
+      env:
+        CARGO_HOME: /run/build/majestictab/cargo
+        CARGO_TARGET_DIR: /run/build/majestictab/build/tauri/target
+        CARGO_NET_OFFLINE: 'true'
+        XDG_CACHE_HOME: /run/build/majestictab/flatpak-node/cache
+        npm_config_cache: /run/build/majestictab/flatpak-node/npm-cache
+        npm_config_offline: 'true'
+        MAJESTICTAB_STORE_CHANNEL: flathub
+        MAJESTICTAB_CHANNEL: stable
+        MAJESTICTAB_BUILD_ID: flathub
+    build-commands:
+      - cd build/tauri && npm ci --offline
+      - node build/cargo-toml.mjs flathub
+      - cd build/tauri && node prepare-tauri-frontend.mjs
+      - cd build/tauri && node generate-icons.mjs linux
+      - node build/verify-channel.mjs flathub
+      - cd build/tauri && npm run tauri -- build --no-bundle
+      - install -Dm755 build/tauri/target/release/majestictab /app/bin/majestictab
+      - node build/tauri/flatpak/render-metainfo.mjs build/tauri/flatpak/net.zathu.majestictab.metainfo.xml
+      - install -Dm644 build/tauri/flatpak/net.zathu.majestictab.desktop /app/share/applications/net.zathu.majestictab.desktop
+      - install -Dm644 build/tauri/flatpak/net.zathu.majestictab.metainfo.xml /app/share/metainfo/net.zathu.majestictab.metainfo.xml
+      - |
+        for size in 16 24 32 48 64 128 256 512; do
+          install -Dm644 build/tauri/src-tauri/icons/linux/${size}x${size}.png /app/share/icons/hicolor/${size}x${size}/apps/net.zathu.majestictab.png
+        done
+      - install -Dm644 build/tauri/src-tauri/icons/linux/net.zathu.majestictab.svg /app/share/icons/hicolor/scalable/apps/net.zathu.majestictab.svg
+    sources:
+      - type: git
+        url: https://github.com/cgarst/MajesticTab.git
+        tag: v1.0.19
+        commit: 5c52670da4bdcf8b33bfb3c10dc282ddb04c7aea
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - cargo-sources.json
+      - node-sources.json
