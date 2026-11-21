@@ -19,13 +19,15 @@ concurrency:
 
 jobs:
   update:
+    # fork PRs get a read-only token and their branch isn't in this repo
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.branch || github.head_ref || github.ref }}
 
@@ -54,7 +56,7 @@ jobs:
 
       - name: Set up Node
         if: steps.need-regen.outputs.needed == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
 
@@ -78,8 +80,10 @@ jobs:
 
       - name: Commit and push
         if: steps.need-regen.outputs.needed == 'true'
+        env:
+          BRANCH: ${{ inputs.branch || github.head_ref || github.ref }}
+          TAG: ${{ steps.need-regen.outputs.new_tag }}
         run: |
-          TAG="${{ steps.need-regen.outputs.new_tag }}"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add cargo-sources.json node-sources.json
@@ -87,10 +91,5 @@ jobs:
             echo "Nothing changed — nothing to commit."
           else
             git commit -m "ci: regenerate cargo and node sources for $TAG"
-            # Rebase onto any commits that landed while we were generating
-            # (e.g. a second external-data-checker push) before pushing,
-            # so we never hit a non-fast-forward rejection.
-            git fetch origin
-            git rebase "origin/$(git rev-parse --abbrev-ref HEAD)"
-            git push
+            git push origin "HEAD:$BRANCH"
           fi
