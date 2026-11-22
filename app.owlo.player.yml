@@ -1,0 +1,99 @@
+# W-391: manifiesto de Flathub. Este archivo se copia tal cual al repo github.com/flathub/app.owlo.player (lo crea
+# Flathub al aceptar el envío); cada versión nueva cambia `url` y `sha256` del tarball (tools/release/flathub.mjs).
+#
+# La app no se compila aquí: Flutter necesita red y el SDK entero, y el build de Flathub no tiene red. Se empaqueta el
+# bundle de `flutter build linux` (tools/linux-build/build.sh, en Docker en el Mac) publicado en una URL pública (el repo de Owlo es privado).
+# libmpv (media_kit) sí se compila: la usa el reproductor y el runtime no la trae.
+id: app.owlo.player
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: owlo
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --share=network
+  # flutter_secure_storage guarda la sesión en el llavero (libsecret)
+  - --talk-name=org.freedesktop.secrets
+  # Que no se apague la pantalla mientras se ve algo (mpv)
+  - --talk-name=org.freedesktop.ScreenSaver
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - '*.a'
+
+modules:
+  - name: libass
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.17.4/libass-0.17.4.tar.xz
+        sha256: '78f1179b838d025e9c26e8fef33f8092f65611444ffa1bfc0cfac6a33511a05a'
+        x-checker-data:
+          type: anitya
+          project-id: 10778
+          url-template: https://github.com/libass/libass/releases/download/$version/libass-$version.tar.xz
+
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Dvulkan=enabled
+      - -Dopengl=enabled
+      - -Ddemos=false
+      - -Dtests=false
+    sources:
+      - type: git
+        url: https://code.videolan.org/videolan/libplacebo.git
+        tag: v7.387.0
+        commit: 275f7dea27924cdd34ab2e6c20e448b6bc4fab65
+
+  - name: mpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dlua=disabled
+      - -Djavascript=disabled
+      - -Dmanpage-build=disabled
+      - -Dtests=false
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz
+        sha256: 'ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209'
+        x-checker-data:
+          type: anitya
+          project-id: 5348
+          url-template: https://github.com/mpv-player/mpv/archive/refs/tags/v$version.tar.gz
+
+  - name: owlo
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/owlo
+      - cp -r bundle/* /app/owlo/
+      - install -Dm755 /dev/stdin /app/bin/owlo <<< $'#!/bin/sh\nexec /app/owlo/owlo "$@"'
+      - install -Dm644 app.owlo.player.desktop /app/share/applications/app.owlo.player.desktop
+      - install -Dm644 app.owlo.player.metainfo.xml /app/share/metainfo/app.owlo.player.metainfo.xml
+      - install -Dm644 app.owlo.player.png /app/share/icons/hicolor/512x512/apps/app.owlo.player.png
+    sources:
+      # Bundle de `flutter build linux --release`, uno por arquitectura (tools/linux-build/build.sh)
+      - type: archive
+        only-arches: [x86_64]
+        url: https://owlo.app/download/linux/Owlo-linux-x86_64-1.0.19.tar.gz
+        sha256: 'd86cffcaf82ee0e50af766079d79ec9a5c0cfbdfc3b1b4a82394b42321e9fa4b'
+        dest: bundle
+      - type: archive
+        only-arches: [aarch64]
+        url: https://owlo.app/download/linux/Owlo-linux-aarch64-1.0.19.tar.gz
+        sha256: '89267bc9e56a0a9e0312b64203a290fe47e731027beae745281234cd91daa277'
+        dest: bundle
+      - type: file
+        path: app.owlo.player.desktop
+      - type: file
+        path: app.owlo.player.metainfo.xml
+      - type: file
+        path: app.owlo.player.png
