@@ -1,0 +1,46 @@
+app-id: app.mindsift.MindSift
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.golang
+  - org.freedesktop.Sdk.Extension.node24
+command: mindsift-desktop
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --share=network
+  - --socket=pulseaudio
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --own-name=org.kde.StatusNotifierItem-2-1
+build-options:
+  append-path: /usr/lib/sdk/golang/bin:/usr/lib/sdk/node24/bin
+  env:
+    GOROOT: /usr/lib/sdk/golang
+    GOTOOLCHAIN: local
+    XDG_CACHE_HOME: /run/build/mindsift-desktop/flatpak-node/cache
+    npm_config_cache: /run/build/mindsift-desktop/flatpak-node/npm-cache
+modules:
+  - name: mindsift-desktop
+    buildsystem: simple
+    build-commands:
+      - mv vendor/ desktop/ 
+      - mkdir -p desktop/vendor/github.com/mindsift-app/mindsift/
+      - cp -r internal/ desktop/vendor/github.com/mindsift-app/mindsift/
+      - npm ci --offline --prefix=frontend --ignore-scripts
+      - APP_VERSION=$(git describe --tags --always) npm run build --prefix=frontend
+      - rm -rf desktop/dist && cp -r frontend/dist desktop/dist
+      - go -C desktop build -mod=vendor -trimpath -buildvcs=false -ldflags "-w -s -X main.version=$(git describe --tags --always)" -o mindsift-desktop .
+      - install -Dm755 desktop/mindsift-desktop /app/bin/mindsift-desktop
+      - install -Dm644 desktop/packaging/linux/app.mindsift.MindSift.desktop /app/share/applications/app.mindsift.MindSift.desktop
+      - install -Dm644 desktop/packaging/flatpak/app.mindsift.MindSift.metainfo.xml /app/share/metainfo/app.mindsift.MindSift.metainfo.xml
+      - install -Dm644 desktop/packaging/linux/icons/hicolor/scalable/apps/app.mindsift.MindSift.svg /app/share/icons/hicolor/scalable/apps/app.mindsift.MindSift.svg
+    sources:
+      - type: git
+        url: https://github.com/mindsift-app/mindsift.git
+        tag: v0.98.0
+        commit: 350b121fe608c3d327a5f5a42817e0494aff5a75
+      - node-sources.json
+      - go.mod.yml
