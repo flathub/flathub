@@ -1,0 +1,126 @@
+app-id: io.github.enhariharan.Rahasyakosh
+runtime: org.gnome.Platform
+runtime-version: '47'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: rahasyakosh
+
+finish-args:
+  # Display
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # Dioxus Desktop binds a local WebSocket between the Rust process and the
+  # WebKit webview; without this the app panics on startup. Flatpak's --share=
+  # only accepts "network" or "ipc" — there is no loopback-only option — so
+  # full network access is unavoidable here.
+  - --share=network
+  # Vault and settings — kept in the user's home directory, not the sandbox
+  - --filesystem=home/.local/share/rahasyakosh:create
+  - --filesystem=home/.config/rahasyakosh:create
+  - --filesystem=home/.local/state/rahasyakosh:create
+  # AT-SPI / Orca screen-reader support
+  - --talk-name=org.a11y.Bus
+  # WebKit proxy resolution — without this WebKit stays blank white inside a
+  # sandbox that lacks the network plug (GLib tries the portal, portal refuses)
+  - --env=GIO_USE_PROXY_RESOLVER=dummy
+  # Do NOT set GDK_BACKEND here. --socket=fallback-x11 hides X11 when Wayland
+  # is available, so the app picks the backend itself at start-up
+  # (platform::renderer_via_x11 in apps/desktop/src/platform). Forcing one here
+  # breaks hosts that only have the other.
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/rahasyakosh/cargo
+
+modules:
+  # Clipboard: the app spawns wl-copy / wl-paste (crates/clipboard) to write
+  # and clear the clipboard without keeping secrets in a long-lived process.
+  # Neither tool is in the GNOME runtime, so bundle wl-clipboard here.
+  - name: wl-clipboard
+    buildsystem: meson
+    # Fish completion dir is detected from the host system (/usr/share/fish),
+    # which is read-only inside the sandbox. Override it into /app so the
+    # install step succeeds; the cleanup section removes it afterwards.
+    config-opts:
+      - -Dfishcompletiondir=/app/share/fish/vendor_completions.d
+    cleanup:
+      - /share/bash-completion
+      - /share/fish
+      - /share/zsh
+      - /share/man
+    sources:
+      - type: git
+        url: https://github.com/bugaevc/wl-clipboard.git
+        tag: v2.2.1
+        commit: 3eb912c274042cd5deed6b478b39908a12f37498
+
+  - name: xdotool
+    buildsystem: simple
+    # Remove build-only files: the binary and libxdo.so are kept; the header,
+    # pkg-config file and man page are not needed at runtime.
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /man
+    build-commands:
+      - make PREFIX=/app
+      - make install PREFIX=/app
+    sources:
+      - type: git
+        url: https://github.com/jordansissel/xdotool
+        tag: v4.20260303.1
+        commit: d37c16111dbe38ea29194f20ac9de03cff8dfc1c
+
+  - name: rahasyakosh
+    buildsystem: simple
+    build-options:
+      env:
+        PKG_CONFIG_PATH: /app/lib/pkgconfig
+        LIBRARY_PATH: /app/lib
+    build-commands:
+      # Build desktop binary
+      - cargo --offline fetch --manifest-path apps/desktop/Cargo.toml
+      # release-flatpak profile: lto=false + codegen-units=16 to avoid OOM on
+      # memory-constrained build hosts; see apps/desktop/Cargo.toml for the definition.
+      - cargo --offline build --profile release-flatpak --jobs 1 --manifest-path apps/desktop/Cargo.toml
+      # Install binaries
+      - install -Dm755 apps/desktop/target/release-flatpak/rahasyakosh-desktop
+          /app/bin/rahasyakosh-desktop
+      - install -Dm755 apps/desktop/packaging/rahasyakosh-launcher
+          /app/bin/rahasyakosh
+      # Desktop integration. The desktop file and metainfo are shared with the
+      # .deb, PPA, snap and AUR packages, which call the launcher
+      # rahasyakosh.desktop and the icon rahasyakosh. Flatpak needs both named
+      # after the app ID, and an Exec that exists inside the sandbox (/usr/bin
+      # here is the runtime's, not ours), so only the installed copies change.
+      - install -Dm644 apps/desktop/packaging/rahasyakosh-system.desktop
+          /app/share/applications/io.github.enhariharan.Rahasyakosh.desktop
+      - desktop-file-edit --set-icon=io.github.enhariharan.Rahasyakosh
+          --set-key=Exec --set-value=rahasyakosh
+          /app/share/applications/io.github.enhariharan.Rahasyakosh.desktop
+      - install -Dm644 apps/desktop/packaging/rahasyakosh-chest.svg
+          /app/share/icons/hicolor/scalable/apps/io.github.enhariharan.Rahasyakosh.svg
+      - install -Dm644 apps/desktop/packaging/io.github.enhariharan.Rahasyakosh.metainfo.xml
+          /app/share/metainfo/io.github.enhariharan.Rahasyakosh.metainfo.xml
+      - sed -i 's|>rahasyakosh.desktop<|>io.github.enhariharan.Rahasyakosh.desktop<|'
+          /app/share/metainfo/io.github.enhariharan.Rahasyakosh.metainfo.xml
+    sources:
+      # Flathub builds a tagged commit, never a local folder. On each release,
+      # set tag and commit to the new release (docs/deploy/flathub_checklist.md,
+      # "Per-release update"); flatpak-builder checks that the tag still points
+      # at this commit. To try changes that aren't tagged yet, see "Test
+      # uncommitted changes" in the same checklist.
+      - type: git
+        url: https://github.com/enhariharan/rahasyakosh.git
+        tag: v0.1.0-alpha.10
+        commit: 85c877734117c79786c6aab60e40dfa1b725723a
+      # generated-sources.json lists every crate in apps/desktop/Cargo.lock so
+      # the build can run offline, as Flathub requires. It must match the
+      # Cargo.lock of the commit above. Regenerate from the repository root with:
+      #   python3 flatpak-cargo-generator.py apps/desktop/Cargo.lock -o flatpak/generated-sources.json
+      # See: https://github.com/flatpak/flatpak-builder-tools/tree/master/cargo
+      - generated-sources.json
