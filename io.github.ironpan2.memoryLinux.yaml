@@ -1,0 +1,109 @@
+app-id: io.github.ironpan2.memoryLinux
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: roblox-memory
+separate-locales: false
+
+finish-args:
+  # GPU + display + audio
+  - --device=dri
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  # Network for Roblox + Proton download + WebView2
+  - --share=network
+  - --share=ipc
+  # Gamepad / input
+  - --device=all
+  # Scheme handlers register per-user
+  - --filesystem=xdg-data/applications:create
+  # Config / prefix live in ~/.var/app/<app-id>/
+  - --persist=.
+  # Allow picking memory.exe from host home
+  - --filesystem=home:ro
+  # Pulse/PipeWire audio and video capture
+  - --filesystem=xdg-run/pipewire-0
+  # Env the launcher reads
+  - --env=PROTON_NO_FSYNC=0
+  - --env=PROTON_USE_WINED3D=0
+
+modules:
+  # Python + LIEF for the one-time kernelbase patch.
+  - name: python3-lief
+    buildsystem: simple
+    build-commands:
+      - pip3 install --prefix=/app --no-deps --no-build-isolation ./lief-1.0.0-cp312-abi3-manylinux_2_28_x86_64.whl
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/cd/d7/6e8135da80a63d8ee413f169eda8c331817bf6f1496fc5647722b105aa19/lief-1.0.0-cp312-abi3-manylinux_2_28_x86_64.whl
+        sha256: 41ff868f5328fc8e5237a9e1f4718590e0ee9180c1422b3e4948b7116ba4517c
+        dest-filename: lief-1.0.0-cp312-abi3-manylinux_2_28_x86_64.whl
+
+  # Zenity for the memory.exe picker dialog.
+  - name: zenity
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/zenity/4.0/zenity-4.0.1.tar.xz
+        sha256: 0c2f537813b10f728470d9d05d6c95713db2512f9c95096e1e85b1a6739605e6
+
+  # Winetricks for optional registry imports.
+  - name: winetricks
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 src/winetricks /app/bin/winetricks
+    sources:
+      - type: git
+        url: https://github.com/Winetricks/winetricks.git
+        tag: '20250102'
+
+  # GE-Proton tarball — lands at /app/extra/GE-Proton.tar.gz; first-run.sh
+  # extracts it into ~/.var/app/<id>/data/GE-Proton on initial launch.
+  - name: ge-proton
+    buildsystem: simple
+    build-commands:
+      - 'true'
+    sources:
+      - type: extra-data
+        filename: GE-Proton.tar.gz
+        url: https://github.com/GloriousEggroll/proton-ge-custom/releases/download/GE-Proton11-1/GE-Proton11-1.tar.gz
+        sha256: ce6dd663ea01725a31805ed5c165723a253cdf0945a6642907330742ae2de5e4
+        size: 528882426
+        installed-size: 1800000000
+
+  # WebView2 Evergreen bootstrapper — extra-data so it ships with the app.
+  - name: webview2
+    buildsystem: simple
+    build-commands:
+      - 'true'
+    sources:
+      - type: extra-data
+        filename: MicrosoftEdgeWebview2Setup.exe
+        url: https://go.microsoft.com/fwlink/p/?LinkId=2124703
+        sha256: fc2972da71d43e0c57b8d85a5cb9b200ed221f723cf43052d08ca722eb0bb22e
+        size: 1826528
+
+  # Our scripts, patch, assets.
+  - name: roblox-memory
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 src/roblox-memory         /app/bin/roblox-memory
+      - install -Dm755 src/first-run.sh          /app/libexec/roblox-memory/first-run.sh
+      - install -Dm755 src/uri-handler.sh        /app/libexec/roblox-memory/uri-handler.sh
+      - install -Dm755 src/patch-kernelbase.py   /app/libexec/roblox-memory/patch-kernelbase.py
+      - install -Dm755 src/pick-memory-exe.sh    /app/libexec/roblox-memory/pick-memory-exe.sh
+      - install -Dm644 src/dxvk.conf             /app/libexec/roblox-memory/dxvk.conf
+      - install -Dm644 src/webview2-flags.reg    /app/libexec/roblox-memory/webview2-flags.reg
+      - install -Dm644 src/win10.reg             /app/libexec/roblox-memory/win10.reg
+      - install -Dm644 src/mouse-fix.reg         /app/libexec/roblox-memory/mouse-fix.reg
+      - install -Dm644 src/roblox-uri.reg        /app/libexec/roblox-memory/roblox-uri.reg
+      - install -Dm644 io.github.ironpan2.memoryLinux.desktop  /app/share/applications/io.github.ironpan2.memoryLinux.desktop
+      - install -Dm644 io.github.ironpan2.memoryLinux.metainfo.xml /app/share/metainfo/io.github.ironpan2.memoryLinux.metainfo.xml
+      - test -f icon/roblox-memory.png && install -Dm644 icon/roblox-memory.png /app/share/icons/hicolor/256x256/apps/io.github.ironpan2.memoryLinux.png || true
+    sources:
+      - type: git
+        url: https://github.com/Ironpan2/memoryLinux.git
+        branch: main
+    subdir: flatpak
+    builddir: false
