@@ -1,0 +1,132 @@
+app-id: dev.muntashir.SlobDictGTK
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: slobdict
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+modules:
+  - name: icu
+    buildsystem: autotools
+    config-opts:
+      - --disable-samples
+      - --disable-tests
+      - --enable-shared
+      - --disable-static
+      - --prefix=/app
+    cleanup:
+      - /bin
+      - /include
+      - /share/doc
+      - /share/man
+      - /share/pkgconfig
+      - /lib/*.a
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://github.com/unicode-org/icu/releases/download/release-79.1/icu4c-79.1-sources.tgz
+        sha256: 06fa63ecb521048f8082f12ad988f6b678d90cbd88aafce24cbc94902b191d99
+    subdir: source
+
+  - name: lzo
+    config-opts:
+      - --enable-shared
+      - --disable-static
+    cleanup:
+      - /include
+      - /share/doc
+      - '*.la'
+      - /lib/*.so
+    sources:
+      - type: archive
+        url: https://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz
+        sha256: c0f892943208266f9b6543b3ae308fab6284c5c90e627931446fb49b4221a072
+        x-checker-data:
+          type: anitya
+          project-id: 1868
+          url-template: https://www.oberhumer.com/opensource/lzo/download/lzo-$version.tar.gz
+
+  - name: xapian-core
+    config-opts:
+      - --disable-sse
+      - --disable-backend-chert
+      - --disable-backend-remote
+      - --disable-documentation
+    sources:
+      - type: archive
+        sha256: c4fd64e81127311756adf5579268d14a79f285ce8ac4ead0930c96195897aece
+        url: https://oligarchy.co.uk/xapian/1.4.32/xapian-core-1.4.32.tar.xz
+        x-checker-data:
+          type: anitya
+          project-id: 15919
+          url-template: https://oligarchy.co.uk/xapian/$version/xapian-core-$version.tar.xz
+
+  - name: libzim
+    buildsystem: meson
+    builddir: true
+    config-opts:
+      - --wrap-mode=nodownload
+      - -Dtest_data_dir=none
+    build-options:
+      env:
+        LDFLAGS: "-L/app/lib -licui18n -licuuc -licudata"
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+    sources:
+      - type: git
+        url: https://github.com/openzim/libzim.git
+        tag: 9.8.2
+        commit: 26ec526f74e8342a40da5ab14e364546988e0e1a
+        x-checker-data:
+          type: anitya
+          project-id: 20193
+          tag-template: $version
+
+  - name: python3-modules
+    buildsystem: simple
+    build-commands: []
+    modules:
+      - app/python3-modules.json
+    sources:
+      - type: file
+        path: app/python3-modules.json
+
+  - name: blueprint-compiler
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://gitlab.gnome.org/jwestman/blueprint-compiler
+        tag: v0.22.2
+        commit: ed35ac74de0c1bb1f5e852410b97edd1f08904c9
+
+  - name: dev.muntashir.SlobDictGTK
+    builddir: true
+    buildsystem: meson
+    subdir: app
+    config-opts:
+      - -Dbuildtype=release
+    sources:
+      - type: git
+        url: https://github.com/MuntashirAkon/SlobDict.git
+        tag: 1.4.0
+    post-install:
+      - chmod +x /app/bin/slobdict
+      - |
+        set -eu
+        for metadata in "$FLATPAK_DEST"/lib/python*/site-packages/*.dist-info; do
+          [ -d "$metadata" ] || continue
+          package=${metadata##*/}
+          package=${package%.dist-info}
+          license_dir="$FLATPAK_DEST/share/licenses/$FLATPAK_ID/$package"
+          if [ -d "$metadata/licenses" ]; then
+            install -d "$license_dir"
+            cp -a "$metadata/licenses/." "$license_dir/"
+          fi
+          find "$metadata" -maxdepth 1 -type f \( -iname 'license*' -o -iname 'copying*' -o -iname 'notice*' \) -exec install -D -t "$license_dir" {} +
+        done
