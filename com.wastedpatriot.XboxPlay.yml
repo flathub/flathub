@@ -1,0 +1,62 @@
+# Flathub build. The app source is the v1.0.0 tag. npm packages and the Electron
+# zip are in generated-sources.json, produced by flatpak-node-generator, so the
+# build does not use the network.
+#
+# From this directory, once the 25.08 SDK, node22, and Electron2 BaseApp are installed:
+#   flatpak-builder --user --install --force-clean build-dir com.wastedpatriot.XboxPlay.yml
+app-id: com.wastedpatriot.XboxPlay
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+separate-locales: false
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+command: xboxplay
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  # A controller is a /dev/input node. Flatpak has no narrower permission than this.
+  - --device=all
+modules:
+  - name: xboxplay
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node22/bin
+      env:
+        XDG_CACHE_HOME: /run/build/xboxplay/flatpak-node/cache
+        npm_config_cache: /run/build/xboxplay/flatpak-node/npm-cache
+        electron_config_cache: /run/build/xboxplay/flatpak-node/cache/electron
+        NPM_CONFIG_AUDIT: "false"
+        NPM_CONFIG_FUND: "false"
+    build-commands:
+      - npm ci --offline --no-audit --no-fund
+      - node node_modules/electron/install.js
+      - test -x node_modules/electron/dist/electron
+      - mkdir -p /app/lib/xboxplay/node_modules
+      - cp -a node_modules/electron /app/lib/xboxplay/node_modules/
+      - cp -a src assets keymap.example.json package.json LICENSE /app/lib/xboxplay/
+      - install -Dm755 xboxplay.sh /app/bin/xboxplay
+      - install -Dm644 com.wastedpatriot.XboxPlay.desktop /app/share/applications/com.wastedpatriot.XboxPlay.desktop
+      - install -Dm644 com.wastedpatriot.XboxPlay.metainfo.xml /app/share/metainfo/com.wastedpatriot.XboxPlay.metainfo.xml
+      - |
+        for size in 16 32 48 64 128 256 512; do
+          install -Dm644 "assets/icons/${size}x${size}.png" "/app/share/icons/hicolor/${size}x${size}/apps/com.wastedpatriot.XboxPlay.png"
+        done
+    sources:
+      - type: git
+        url: https://github.com/WastedPatriot/xboxplay.git
+        tag: v1.0.0
+        commit: 911cb8cfd8831e5a5166e64dc63b47856cdb4e5e
+      - type: file
+        path: xboxplay.sh
+      - type: file
+        path: com.wastedpatriot.XboxPlay.desktop
+      - type: file
+        path: com.wastedpatriot.XboxPlay.metainfo.xml
+      - generated-sources.json
