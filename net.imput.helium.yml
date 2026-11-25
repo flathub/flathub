@@ -1,0 +1,172 @@
+app-id: net.imput.helium
+runtime: org.freedesktop.Platform
+runtime-version: "26.08"
+sdk: org.freedesktop.Sdk
+base: org.chromium.Chromium.BaseApp
+base-version: '26.08'
+separate-locales: false
+# To get around needing to patch or supply our own dist/ stuff
+rename-icon: helium
+rename-desktop-file: helium.desktop
+command: helium
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --socket=pcsc
+  - --socket=cups
+  - --device=dri
+  - --allow=bluetooth
+  # Unsure if this is actually needed, as typically the system sets default apps (or another app):
+  # Allow setting Helium as the default browser (see xdg-shim.py)
+  # - --filesystem=xdg-config/mimeapps.list
+  - --filesystem=xdg-download
+  # Not sure why the previous manifest had these two
+  # - --filesystem=xdg-pictures
+  # - --filesystem=xdg-videos
+  - --filesystem=xdg-desktop
+  # Allow PWAs
+  - --filesystem=home/.local/share/applications:create
+  - --filesystem=home/.local/share/icons:create
+  # For MPRIS media cover art
+  - --filesystem=/tmp
+  # Chromium now uses $XDG_DATA_HOME for pki data. Unsure if this is still needed
+  # - --persist=.pki
+  - --env=LD_LIBRARY_PATH=/app/lib/helium:$LD_LIBRARY_PATH
+  - --env=CHROME_DEVEL_SANDBOX_DISABLED=1
+  - --env=ICU_DATA_PATH=/app/lib/helium
+  # No other browser does this. Might just be a helium issue. Not on KWIN to test if needed currently
+  # Prefix PWA app_ids/launchers with our id; KWin rejects other app_ids from sandboxed windows
+  # - --env=CHROME_WEB_APP_DESKTOP_ID_PREFIX=net.imput.helium.
+  # Distribution EnvVar
+  - --env=CHROME_VERSION_EXTRA="Flatpak"
+  # D-bus names to allow inhibiting sleep, enable media controls, and other stuff
+  # Based on com.Google.Chrome flatpak
+  - --system-talk-name=org.bluez
+  - --system-talk-name=org.freedesktop.UPower
+  # left over from the previous manifest. I'm sure chromium uses portals and these should not be needed.. right..? Every other browser does use these perms :clueless:
+  # - --talk-name=org.freedesktop.FileManager1
+  # - --talk-name=org.freedesktop.Notifications
+  # - --talk-name=org.freedesktop.ScreenSaver
+  # - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.gnome.SessionManager
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --system-talk-name=org.freedesktop.Avahi
+  - --own-name=org.mpris.MediaPlayer2.chromium.*
+  # GNOME-specific
+  - --filesystem=xdg-run/dconf
+  - --filesystem=~/.config/dconf:ro
+  - --talk-name=ca.desrt.dconf
+  - --env=DCONF_USER_CONFIG_DIR=.config/dconf
+  - --env=GIO_EXTRA_MODULES=/app/lib/gio/modules
+  - --env=GSETTINGS_BACKEND=dconf
+  # Do we even bother with this permission? It seems that it's only needed for KDE 5
+  # KDE-specific
+  # - --filesystem=~/.config/kioslaverc
+
+modules:
+  - name: dconf
+    buildsystem: meson
+    config-opts:
+      - -Dbash_completion=false
+      - -Dman=false
+      - -Dvapi=false
+    cleanup:
+      - /etc
+      - /include
+      - ca.desrt.dconf.service
+      - dconf.service
+      - dconf-service
+      - '*.pc'
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/dconf/0.49/dconf-0.49.0.tar.xz
+        sha256: 16a47e49a58156dbb96578e1708325299e4c19eea9be128d5bd12fd0963d6c36
+        x-checker-data:
+          type: gnome
+          name: dconf
+          stable-only: true
+      # From: https://src.fedoraproject.org/rpms/dconf
+      - type: patch
+        path: dconf-override.patch
+
+  - name: zypak
+    sources:
+      - type: git
+        url: https://github.com/refi64/zypak
+        tag: v2025.09
+        commit: 693a71c5ffa80ec9c9ce2ae03b1ccc493c698e53
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+
+  - name: helium
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/lib/helium /app/bin
+      - tar xvf helium-linux.tar.xz -C /app/lib/helium --strip-components 1 --no-same-owner
+
+      # Odd name to rename the binary for helium, but other way would be modifying desktop file
+      - mv /app/lib/helium/helium /app/lib/helium/helium.real
+      - install -Dm755 helium.sh /app/bin/helium
+      - install -Dm644 cobalt.ini /app/etc/cobalt.ini
+
+      # left over from previous manifest and unsure if this is actually required. See https://github.com/ShyVortex/helium-flatpak/pull/19 for more info
+      # I can't seem to open PWAs via my launcher, or calling the command in the desktop file directly from my terminal. They work when clicking 'To open this app, choose a link' button within the browser to open the webapp
+      # xdg-utils stand-ins for PWA shortcuts and default browser handling
+      - install -Dm755 xdg-shim.py /app/libexec/xdg-shim
+      # These two files already exist in /app/bin
+      # - ln -s ../libexec/xdg-shim /app/bin/xdg-desktop-menu
+      # - ln -s ../libexec/xdg-shim /app/bin/xdg-icon-resource
+      - ln -s ../libexec/xdg-shim /app/bin/xdg-settings
+
+      # Required for CJK stuff? Haven't verfied if needed. See https://github.com/ShyVortex/helium-flatpak/pull/17
+      # - install -Dm644 fonts-local.conf /app/etc/fonts/local.conf
+      # - ln -s /run/host/fonts /app/share/host-fonts
+      - install -Dm644 /app/lib/helium/helium.desktop /app/share/applications/helium.desktop
+      - install -Dm644 /app/lib/helium/product_logo_256.png /app/share/icons/hicolor/256x256/apps/helium.png
+      - install -Dm644 net.imput.helium.metainfo.xml /app/share/metainfo/net.imput.helium.metainfo.xml
+
+    sources:
+      - type: file
+        url: https://github.com/imputnet/helium-linux/releases/download/0.22.4.1/helium-0.22.4.1-x86_64_linux.tar.xz
+        sha256: 00d0fd239315549e91253cf2495b021a403ccf98977a7925742b020c0577bd2c
+        dest-filename: helium-linux.tar.xz
+        only-arches: [x86_64]
+        x-checker-data:
+          type: github
+          repo: imputnet/helium-linux
+          tag-pattern: '^v([0-9.]+)$'
+          asset-name: 'helium-${version}-x86_64_linux.tar.xz'
+      - type: file
+        url: https://github.com/imputnet/helium-linux/releases/download/0.22.4.1/helium-0.22.4.1-arm64_linux.tar.xz
+        sha256: 51a1218ed818583e17d8a67f2960fe729c6d0ec037d1bef914a78f8ffb0fff57
+        dest-filename: helium-linux.tar.xz
+        only-arches: [aarch64]
+        x-checker-data:
+          type: github
+          repo: imputnet/helium-linux
+          tag-pattern: '^v([0-9.]+)$'
+          asset-name: 'helium-${version}-arm64_linux.tar.xz'
+      # upstream doesn't provide metainfo in release archives (besides .deb for some reason)
+      - type: file
+        url: https://raw.githubusercontent.com/imputnet/helium-linux/refs/tags/0.22.4.1/package/net.imput.helium.metainfo.xml
+        sha256: adf5c5d437105df6bf6e2117e83f939134d8b0f0f1f94d441ca626fc8e169ef2
+        x-checker-data:
+          type: git
+          tag-pattern: ^([\d.]+)$
+          version-scheme: semantic
+          url-template: https://raw.githubusercontent.com/imputnet/helium-linux/refs/tags/$version/package/net.imput.helium.metainfo.xml
+
+      # Installs WideVine (is that legal?), does some policy stuff, ensures xdg base dirs exist (ig for PWA stuff), and zypak-wrapper
+      - type: file
+        path: helium.sh
+      - type: file
+        path: cobalt.ini
+      - type: file
+        path: xdg-shim.py
+      - type: file
+        path: fonts-local.conf
