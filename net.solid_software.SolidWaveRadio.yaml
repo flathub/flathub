@@ -1,0 +1,102 @@
+# Flathub Binary Manifest (Plexamp-Stil)
+#
+# Kein Source-Build: fertiges Portable-tarball (Ubuntu 22.04 / glibc <= 2.35)
+# wird per URL geladen und nur in die Runtime gepackt.
+#
+# App-ID: net.solid_software.SolidWaveRadio
+#
+# Vor Einreichung:
+#   1) Release-Asset auf Codeberg veroeffentlichen
+#      SolidWave-Radio-<ver>-linux-x64.tar.gz
+#   2) sha512 unten aktualisieren (./update-binary-hash.sh)
+#   3) flatpak-builder lokal testen (siehe README.md)
+#
+# Runtime bei Einreichung ggf. auf aktuelle Flathub-Stable anheben.
+
+app-id: net.solid_software.SolidWaveRadio
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: startsolidwave
+separate-locales: false
+
+# Debuginfo vom Binary-Tarball oft mit 0777 (NTFS) — Flatpak lehnt das ab
+build-options:
+  no-debuginfo: true
+  strip: true
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --filesystem=xdg-music:create
+  - --filesystem=xdg-download:create
+  - --talk-name=org.freedesktop.Notifications
+  - --env=LD_LIBRARY_PATH=/app/lib
+
+modules:
+  - name: solidwave
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 startsolidwave /app/bin/startsolidwave
+      - install -Dm644 net.solid_software.SolidWaveRadio.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 net.solid_software.SolidWaveRadio.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - |
+        for s in 16 32 48 64 128 256 512; do
+          install -Dm644 "icons/hicolor/${s}x${s}/apps/${FLATPAK_ID}.png" \
+            "/app/share/icons/hicolor/${s}x${s}/apps/${FLATPAK_ID}.png"
+        done
+      - |
+        # Tarball enthaelt Top-Level "linux-x64/"
+        tar -xf SolidWave-Radio-linux-x64.tar.gz
+        install -Dm755 linux-x64/solidwave_radio /app/bin/solidwave_radio
+        if [ -d linux-x64/fonts ]; then
+          mkdir -p /app/share/solidwave_radio
+          cp -a linux-x64/fonts /app/share/solidwave_radio/
+        fi
+        if [ -d linux-x64/presets ]; then
+          mkdir -p /app/share/solidwave_radio
+          cp -a linux-x64/presets /app/share/solidwave_radio/
+        fi
+        mkdir -p /app/lib
+        for f in linux-x64/libprojectM-4*.so*; do
+          [ -e "$f" ] || continue
+          cp -a "$f" /app/lib/
+        done
+        if [ -d linux-x64/license ]; then
+          mkdir -p /app/share/licenses/SolidWaveRadio
+          cp -a linux-x64/license/. /app/share/licenses/SolidWaveRadio/
+        fi
+        # Flatpak lehnt world-writable Dateien ab (NTFS/cp -a oft 0777)
+        find /app -type f -exec chmod a-s,go-w {} +
+        find /app -type d -exec chmod a-s,go-w {} +
+        chmod 755 /app/bin/solidwave_radio /app/bin/startsolidwave
+
+    sources:
+      - type: file
+        path: startsolidwave
+
+      - type: file
+        path: net.solid_software.SolidWaveRadio.desktop
+
+      - type: file
+        path: net.solid_software.SolidWaveRadio.metainfo.xml
+
+      - type: dir
+        path: icons
+        dest: icons
+
+      # Oeffentliches Release-Asset (Binary-only). Als Upstream-Autor:
+      # type:file + url (wie Plexamp) — kein extra-data noetig.
+      - type: file
+        only-arches:
+          - x86_64
+        url: https://codeberg.org/thunderbird2013/SolidWaveRadio/raw/branch/main/releases/SolidWave-Radio-1.0.0-linux-x64.tar.gz
+        dest-filename: SolidWave-Radio-linux-x64.tar.gz
+        sha512: e4f5fab660a1e14fef7632a1ba60c230985391069f10256546b6846fdb2603f4db3d0cc8e111973dddd4de769dfc95cb69493948d662aa7022e40dd20825d763
+        # Lokal testen (URL auskommentieren):
+        # path: ../../dist-portable/SolidWave-Radio-1.0.0-linux-x64.tar.gz
+        # dest-filename: SolidWave-Radio-linux-x64.tar.gz
