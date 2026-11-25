@@ -132,7 +132,7 @@ write_inventory "$inventory" --arg hash "${listing_hash%% *}" \
       started_at: $started, finished_at: $finished, shared_between_shards: false,
       source: $source}' "$inventory"
 
-# The first skip wins: archived, inactive, marker, opt-out, EOL, manifest.
+# The first skip wins: archived, inactive, neither marker nor submodule, opt-out, EOL, manifest.
 while IFS=$'\t' read -r repo archived; do
     if [[ -z "${APP_ID:-}" ]]; then
         checksum=$(printf '%s' "$repo" | cksum)
@@ -176,11 +176,24 @@ for repo in "${repos[@]}"; do
         '.branch = (if $branch == "" then null else $branch end) |
          .commit = (if $commit == "" then null else $commit end) |
          .checkout_unknown_reason = (if $branch == "" or $commit == "" then "git_metadata_unavailable" else null end)'
-    grep -rqE --exclude-dir=.git 'extra-data|x-checker-data|\.AppImage' -- "$repo"
-    case "$?" in
-        0) checker_apps+=("$repo") ;;
-        1) decision '.selection = "excluded" | .reason = "no_checker_marker"' ;;
-        *) decision '.selection = "error" | .error = "marker_scan_failed"' ;;
+    if grep -rqE --exclude-dir=.git 'extra-data|x-checker-data|\.AppImage' -- "$repo"; then
+        marker=text
+    elif (( $? != 1 )); then
+        marker=marker_scan_failed
+    elif ! tree=$(git -C "$repo" ls-tree -r HEAD); then
+        marker=submodule_scan_failed
+    elif [[ "$tree" =~ (^|$'\n')160000\ commit\  ]]; then
+        # A gitlink is visible even if the submodule hasn't been initialized.
+        marker=submodule
+    else
+        marker=no_checker_marker
+    fi
+
+    case "$marker" in
+        text|submodule) checker_apps+=("$repo") ;;
+        no_checker_marker) decision '.selection = "excluded" | .reason = "no_checker_marker"' ;;
+        marker_scan_failed|submodule_scan_failed)
+            decision --arg error "$marker" '.selection = "error" | .error = $error' ;;
     esac
 done
 
