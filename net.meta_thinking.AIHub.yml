@@ -1,0 +1,257 @@
+# Flathub manifest for AI Hub — the extra-data build.
+#
+# AI Hub is proprietary, and Flathub builds every app itself, on its own
+# machines, from a public manifest. The self-built bundle's manifest
+# (packaging/flatpak/) unpacks a .deb lying next to it, which Flathub can never
+# see. So this manifest carries no AI Hub binaries at all. It names a release
+# payload — AI-Hub_<version>_<arch>.flathub.tar.gz on the public GitHub release
+# — by URL, sha256 and size, as `extra-data`: flatpak downloads it on the
+# user's machine at install time, verifies it, and runs /app/bin/apply_extra to
+# unpack it into /app/extra. What Flathub builds and hosts is only what this
+# manifest builds: the tray libraries (from source), two small wrappers, the
+# desktop entry, the AppStream metadata and the icons.
+#
+# Licence: proprietary — LICENSE in the source repository. The AppStream
+# project_license is LicenseRef-proprietary=https://aihub.meta-thinking.net/terms.
+#
+# Paths. In the source repository this file lives in packaging/flathub/ and
+# reaches the files it shares with the bundle manifest through ../flatpak/
+# (tray-deps.yml, the .desktop and the metainfo). The Flathub repository is
+# flat, so `scripts/flathub-submission.sh assemble <dir>` copies everything
+# into one directory and drops that prefix; docs/FLATHUB.md has the steps.
+
+app-id: net.meta_thinking.AIHub
+
+# The same runtime as the bundle manifest, for the same reasons (written out
+# there): Tauri v2 links webkit2gtk-4.1, which only org.gnome.Platform ships,
+# and 49 is the supported release verified to carry it. preflight fails if
+# the two manifests ever pin different runtimes.
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+
+# The wrapper installed below, not the Tauri binary directly; see the ai-hub
+# script source for why the wrapper has to exist.
+command: ai-hub
+
+# Every entry here is a promise to the user, so every entry is argued for.
+# Nothing is present "in case it turns out to be needed".
+finish-args:
+  # The product IS a localhost endpoint: n8n, opencode and curl on the HOST
+  # connect to 127.0.0.1:8317. Without --share=network the sandbox gets a
+  # private network namespace whose loopback nothing outside can reach, so the
+  # one thing the app exists to publish would be invisible. It also needs
+  # outbound TLS to the providers, and inbound on the per-provider OAuth
+  # loopback callback ports (51121 / 54545 / 1455 / 56121, lib.rs).
+  - --share=network
+
+  # A GUI with a WebKit view.
+  - --socket=wayland
+  - --socket=fallback-x11
+  # X11 shared memory: without it the webview repaints over the socket and the
+  # UI crawls. --share=ipc is what makes fallback-x11 usable, not decoration.
+  - --share=ipc
+  # WebKit compositing wants a render node; software rendering on a 1120x760
+  # window is visibly slow.
+  - --device=dri
+
+  # The tray icon is not a nicety here — it carries the gateway status line and
+  # the "Copy endpoint / Copy key" actions. libayatana-appindicator (the CI
+  # Linux dep) publishes it by registering with the StatusNotifier host on the
+  # session bus; denied that name, the tray silently never appears.
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+  # --filesystem=home, deliberately, and it is the widest thing granted here.
+  #
+  # The narrow option was weighed and does not work. Beyond its own
+  # ~/.config/AI-Hub and the ~/.ai-hub/generated-content the UI documents to
+  # the user, this app's central feature ("Connections") edits the config files
+  # of AI tools installed on the host, scattered across the whole of $HOME:
+  #   ~/.claude/settings.json   ~/.aider.conf.yml      ~/.continue/config.yaml
+  #   ~/.pi/agent/models.json   ~/.openclaw/openclaw.json  ~/.codex/config.toml
+  #   ~/.dvt/home.db            ~/.config/crush ~/.config/goose ~/.config/opencode
+  #   ~/.local/share/xyz.block.buzz.app
+  # and it appends a source-line to ~/.zshrc, ~/.bashrc, ~/.bash_profile and
+  # ~/.profile (lib.rs shell_rc_targets), keeping a .aihub.bak beside each.
+  # That list grows with every tool we add support for. Enumerating it as
+  # --filesystem= entries would mean a permission set that goes stale on a
+  # release we forget to update it, and the failure is silent: the button says
+  # "Connected", the file lands nowhere the real tool reads. This codebase has
+  # already been bitten once by exactly that shape of silent no-op (writing only
+  # ~/.zshrc, so every bash user got nothing).
+  #
+  # The generated-media argument points the same way. A sandboxed private HOME
+  # would move ~/.ai-hub/generated-content somewhere the user cannot find,
+  # while the Server screen keeps telling them it is at ~/.ai-hub — a lie
+  # printed in our own UI.
+  - --filesystem=home
+
+# NOT granted, and each omission is a decision:
+#   * No portal talk-names. Opening an OAuth sign-in link goes through
+#     xdg-open -> org.freedesktop.portal.OpenURI, and flatpak allows every app
+#     to talk to org.freedesktop.portal.* already. A --talk-name for it would be
+#     noise in the permission list a user reads, buying nothing.
+#   * No --socket=pulseaudio. The speech sidecars never touch an audio device:
+#     whisper-server transcribes uploaded audio over HTTP and
+#     sherpa-onnx-offline-tts is exec'd per request and writes a file.
+#   * No --talk-name=org.freedesktop.Flatpak. That is a sandbox escape, and the
+#     app has no business spawning anything on the host.
+
+# Applied ONCE, after every module — not per module. Putting /lib/pkgconfig in a
+# module's own cleanup deletes the .pc files the moment that module finishes, so
+# the next module in the chain cannot find it and the link fails with
+# "cannot find -ldbusmenu-glib" even though the .so is sitting in /app/lib.
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/gtk-doc
+  - /share/man
+  - '*.la'
+  - '*.a'
+
+modules:
+  # libayatana-appindicator and the four modules it needs; without them the
+  # app panics before it draws a window. Shared with the bundle manifest.
+  - tray-deps.yml
+
+  - name: ai-hub
+    buildsystem: simple
+    sources:
+      # ── the payload, x86_64 ──
+      # Placeholders until the release exists: the sha256 and size come from
+      # packaging/flathub/extra-data.x86_64.json, written by
+      # scripts/build-flathub-payload.sh in the release workflow, and are copied
+      # in with `scripts/flathub-submission.sh set-extra-data`.
+      - type: extra-data
+        filename: ai-hub.tar.gz
+        only-arches:
+          - x86_64
+        url: https://github.com/meta-thinking/homebrew-tap/releases/download/desktop-v0.5.0/AI-Hub_0.5.0_x86_64.flathub.tar.gz
+        sha256: "d302e691aa45f8bff6592b390d769079407f0efd9c8bcdd4e2c677d681bba3e9"
+        size: 55714378
+        # flatpak-external-data-checker: the highest desktop-vX.Y.Z release that
+        # is neither a draft nor a prerelease, by version number — not by
+        # creation date, so older releases copied into the repo later never
+        # count as newer.
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/meta-thinking/homebrew-tap/releases?per_page=100
+          version-query: '[.[] | select(.draft | not) | select(.prerelease | not) | .tag_name | select(test("^desktop-v[0-9]+[.][0-9]+[.][0-9]+$")) | ltrimstr("desktop-v")] | sort_by(split(".") | map(tonumber)) | last'
+          url-query: '.[] | select(.tag_name == "desktop-v" + $version) | .assets[] | select(.name == "AI-Hub_" + $version + "_x86_64.flathub.tar.gz") | .browser_download_url'
+
+      # ── the payload, aarch64 ──
+      # Placeholders until the release exists: the sha256 and size come from
+      # packaging/flathub/extra-data.aarch64.json, written by
+      # scripts/build-flathub-payload.sh in the release workflow, and are copied
+      # in with `scripts/flathub-submission.sh set-extra-data`.
+      - type: extra-data
+        filename: ai-hub.tar.gz
+        only-arches:
+          - aarch64
+        url: https://github.com/meta-thinking/homebrew-tap/releases/download/desktop-v0.5.0/AI-Hub_0.5.0_aarch64.flathub.tar.gz
+        sha256: "511870d4c0520bc0216db9df2af5ab56af9eddd7fe13feb251ef24e53b991c20"
+        size: 51457964
+        # flatpak-external-data-checker: the highest desktop-vX.Y.Z release that
+        # is neither a draft nor a prerelease, by version number — not by
+        # creation date, so older releases copied into the repo later never
+        # count as newer.
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/meta-thinking/homebrew-tap/releases?per_page=100
+          version-query: '[.[] | select(.draft | not) | select(.prerelease | not) | .tag_name | select(test("^desktop-v[0-9]+[.][0-9]+[.][0-9]+$")) | ltrimstr("desktop-v")] | sort_by(split(".") | map(tonumber)) | last'
+          url-query: '.[] | select(.tag_name == "desktop-v" + $version) | .assets[] | select(.name == "AI-Hub_" + $version + "_aarch64.flathub.tar.gz") | .browser_download_url'
+
+      # ── unpack the payload, on the user's machine ──
+      # flatpak runs this once per install or update, with /app/extra writable
+      # and holding the downloaded file, inside the Platform runtime — not the
+      # SDK — and without network. GNU tar and bsdtar both read a .tar.gz;
+      # whichever the runtime carries is used, and having neither is an error
+      # that names itself instead of an app with nothing in it.
+      - type: script
+        dest-filename: apply_extra
+        commands:
+          - set -eu
+          - cd /app/extra
+          - |
+            if command -v tar >/dev/null 2>&1; then
+              tar -xzf ai-hub.tar.gz
+            elif command -v bsdtar >/dev/null 2>&1; then
+              bsdtar -xzf ai-hub.tar.gz
+            else
+              echo "apply_extra: the runtime has neither tar nor bsdtar" >&2
+              exit 1
+            fi
+          - rm -f ai-hub.tar.gz
+          # The payload's contract, the same list scripts/build-flathub-payload.sh
+          # builds. The app spawns every sidecar from the directory its own
+          # executable is in (sidecar_path in lib.rs), so all nine sit in bin/;
+          # ai-hub-cli is the Rust command line the wrapper below execs.
+          - |
+            for b in AIHub ai-hub-server ai-hub-gateway whisper-server \
+                     sherpa-onnx-offline-tts ai-device-harness creative-designer \
+                     content-creator ai-hub-cli; do
+              test -x "bin/$b" || { echo "apply_extra: the payload has no executable bin/$b" >&2; exit 1; }
+            done
+            for c in ai-hub ai-proxy; do
+              test -x "cli/$c" || { echo "apply_extra: the payload has no executable cli/$c" >&2; exit 1; }
+            done
+
+      # ── the launcher ──
+      # Why a wrapper exists at all: flatpak repoints XDG_CONFIG_HOME at
+      # ~/.var/app/net.meta_thinking.AIHub/config even for an app holding
+      # --filesystem=home. For this app that is actively wrong. crush, goose,
+      # llm and opencode are located through $XDG_CONFIG_HOME (lib.rs
+      # xdg_config_env()), and since 0.5 so is the app's own state folder. Left
+      # repointed, the app would write a valid crush.json into ~/.var/app/...
+      # that the real crush never opens, and would start from an empty state
+      # folder instead of ~/.config/AI-Hub. HOME itself is already the real home
+      # under --filesystem=home, so XDG_CONFIG_HOME is the only variable that has
+      # to be put back. exec keeps /app/extra/bin/AIHub as the process, so its
+      # sidecars resolve to /app/extra/bin and the window's WM_CLASS is AIHub.
+      - type: script
+        dest-filename: ai-hub
+        commands:
+          - export XDG_CONFIG_HOME="$HOME/.config"
+          - exec /app/extra/bin/AIHub "$@"
+
+      # ── the ai-hub CLI ──
+      # The desktop app's "Install CLI" writes a HOST launcher that re-enters
+      # this sandbox with `flatpak run --command=ai-hub-cli`. The same
+      # XDG_CONFIG_HOME fix applies (or the CLI reads a different config.yaml
+      # and hands out a key that 401s), and the CLI finds its sidecars only
+      # because AIHUB_BIN_DIR says where they are. The binary is the Rust
+      # ai-hub-cli in the payload's bin/; cli/ai-hub there is the thin bash
+      # wrapper around the same binary, kept for anything that names it.
+      - type: script
+        dest-filename: ai-hub-cli
+        commands:
+          - export XDG_CONFIG_HOME="$HOME/.config"
+          - export AIHUB_BIN_DIR=/app/extra/bin
+          - export AIHUB_LAUNCHER_PATH=/app/bin/ai-hub-cli
+          - exec /app/extra/bin/ai-hub-cli "$@"
+
+      - type: file
+        path: net.meta_thinking.AIHub.desktop
+      - type: file
+        path: net.meta_thinking.AIHub.metainfo.xml
+      # The app's icon (the mark, as Tauri renders it for every platform) at
+      # the three sizes software centres ask for. Exports must exist at BUILD
+      # time, so they cannot come from the payload.
+      - type: file
+        path: icons/net.meta_thinking.AIHub-128.png
+      - type: file
+        path: icons/net.meta_thinking.AIHub-256.png
+      - type: file
+        path: icons/net.meta_thinking.AIHub-512.png
+
+    build-commands:
+      - install -Dm755 apply_extra /app/bin/apply_extra
+      - install -Dm755 ai-hub /app/bin/ai-hub
+      - install -Dm755 ai-hub-cli /app/bin/ai-hub-cli
+      - install -Dm644 net.meta_thinking.AIHub.desktop /app/share/applications/net.meta_thinking.AIHub.desktop
+      - install -Dm644 net.meta_thinking.AIHub.metainfo.xml /app/share/metainfo/net.meta_thinking.AIHub.metainfo.xml
+      - |
+        for s in 128 256 512; do
+          install -Dm644 "net.meta_thinking.AIHub-$s.png" \
+            "/app/share/icons/hicolor/${s}x${s}/apps/net.meta_thinking.AIHub.png"
+        done

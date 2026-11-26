@@ -1,0 +1,154 @@
+# The tray's dependency chain, shared by both Flatpak manifests:
+#   packaging/flatpak/net.meta_thinking.AIHub.yml   self-built bundle (local .deb)
+#   packaging/flathub/net.meta_thinking.AIHub.yml   Flathub (extra-data)
+# Each lists this file as a module. Kept in one place so the two can never
+# build a different tray: a fix made to one copy and not the other would ship
+# an app that panics at startup through exactly one channel.
+#
+# Tauri's tray goes through libappindicator-sys, which dlopen()s
+# libayatana-appindicator3.so.1 at STARTUP and panics if it is absent:
+#
+#   thread 'main' panicked at libappindicator-sys-0.9.0/src/lib.rs:41:5:
+#   Failed to load ayatana-appindicator3 or appindicator3 dynamic library
+#
+# org.gnome.Platform does not ship it, and a .deb gets it from apt — which is
+# exactly the dependency a Flatpak has to carry itself. Without these three
+# modules the app dies before it draws a window. Found by running the bundle
+# on the aarch64 rig, not by reading the manifest.
+#
+# A module file holds ONE module, so the chain is written the way Flathub's
+# shared-modules write it: libayatana-appindicator, with what it needs nested
+# under it. flatpak-builder builds nested modules first and in order, so the
+# order is the same as when these were five sibling modules: intltool,
+# libdbusmenu, ayatana-ido, libayatana-indicator, then libayatana-appindicator.
+# Nested modules do not inherit this module's build-options (its LDFLAGS stays
+# its own), and each module's cleanup still covers only what it installed.
+name: libayatana-appindicator
+modules:
+  # libdbusmenu 16.04 predates gettext's built-in tooling and its configure
+  # aborts with "Your intltool is too old" — the GNOME SDK stopped shipping
+  # intltool years ago. Built here and cleaned up entirely: it is a build-time
+  # tool, nothing at runtime should carry it.
+  - name: intltool
+    # Explicit paths, not '*'. A bare '*' is broad enough that flatpak-builder
+    # prunes /app/bin once intltool's own binaries leave it, and /app/bin is
+    # where every one of our binaries and sidecars lives. Name what this module
+    # installed and nothing else.
+    cleanup:
+      - /bin/intltool-extract
+      - /bin/intltool-merge
+      - /bin/intltool-prepare
+      - /bin/intltool-update
+      - /bin/intltoolize
+      - /share/intltool
+      - /share/aclocal
+      - /share/man
+    sources:
+      - type: archive
+        url: https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz
+        sha256: 67c74d94196b153b774ab9f89b2fa6c6ba79352407037c8c14d5aeb334e959cd
+
+  - name: libdbusmenu
+    buildsystem: autotools
+    # libdbusmenu's configure emits valgrind conditionals it never defines, and
+    # the generated Makefile then fails on them. Neutralising the pair is the
+    # long-standing fix every Flathub manifest that ships this library uses.
+    build-options:
+      cflags: -Wno-error
+      env:
+        HAVE_VALGRIND_TRUE: '#'
+        HAVE_VALGRIND_FALSE: ''
+    config-opts:
+      - --with-gtk=3
+      - --disable-dumper
+      - --disable-static
+      - --disable-tests
+      - --disable-gtk-doc
+      - --disable-vala
+      # GObject introspection installs its typelib into the SDK's own
+      # /usr/lib/.../girepository-1.0, which is read-only, and the build dies at
+      # `install`. Nothing here needs it: Tauri links the C library, and the
+      # typelib exists only for GJS/Python bindings we do not ship.
+      - --disable-introspection
+    sources:
+      - type: archive
+        url: https://launchpad.net/libdbusmenu/16.04/16.04.0/+download/libdbusmenu-16.04.0.tar.gz
+        sha256: b9cc4a2acd74509435892823607d966d424bd9ad5d0b00938f27240a1bfa878a
+
+  # libayatana-indicator's cmake requires libayatana-ido3-0.4 >= 0.8.2. Note the
+  # repo is AyatanaIndicators/ayatana-ido — NOT libayatana-ido, which 404s.
+  - name: ayatana-ido
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      # Pin libdir to 'lib'. CMake's GNUInstallDirs picks lib64 on a 64-bit
+      # host unless told otherwise; flatpak-builder 1.4 passes this for you and
+      # 1.2 (Ubuntu 22.04, which the CI runners use) does not. The result is a
+      # .pc installed to /app/lib64/pkgconfig, which PKG_CONFIG_PATH never
+      # looks at — so the NEXT module in the chain fails with "Package
+      # 'libayatana-ido3-0.4' not found" while the library sits there installed.
+      # It built locally on 1.4.9 and failed in CI on 1.2.2; pinning makes both
+      # agree instead of depending on the builder's age.
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DENABLE_TESTS=OFF
+      - -DENABLE_INTROSPECTION=OFF
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/ayatana-ido/archive/refs/tags/0.10.4.tar.gz
+        sha256: bd59abd5f1314e411d0d55ce3643e91cef633271f58126be529de5fb71c5ab38
+
+  - name: libayatana-indicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      # Pin libdir to 'lib'. CMake's GNUInstallDirs picks lib64 on a 64-bit
+      # host unless told otherwise; flatpak-builder 1.4 passes this for you and
+      # 1.2 (Ubuntu 22.04, which the CI runners use) does not. The result is a
+      # .pc installed to /app/lib64/pkgconfig, which PKG_CONFIG_PATH never
+      # looks at — so the NEXT module in the chain fails with "Package
+      # 'libayatana-ido3-0.4' not found" while the library sits there installed.
+      # It built locally on 1.4.9 and failed in CI on 1.2.2; pinning makes both
+      # agree instead of depending on the builder's age.
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DENABLE_TESTS=OFF
+      - -DENABLE_INTROSPECTION=OFF
+    sources:
+      - type: archive
+        url: https://github.com/AyatanaIndicators/libayatana-indicator/archive/refs/tags/0.9.4.tar.gz
+        sha256: a18d3c682e29afd77db24366f8475b26bda22b0e16ff569a2ec71cd6eb4eac95
+
+# libayatana-appindicator itself, built once everything above is in /app.
+buildsystem: cmake-ninja
+# Its CMakeLists takes the library NAMES from pkg-config but never the
+# library DIRS, so the link line carries -ldbusmenu-glib with no -L and ld
+# fails even though every .so is sitting in /app/lib. Hand it the search
+# path explicitly rather than patching upstream.
+build-options:
+  env:
+    LDFLAGS: -L/app/lib
+config-opts:
+  - -DCMAKE_BUILD_TYPE=Release
+  # Pin libdir to 'lib'. CMake's GNUInstallDirs picks lib64 on a 64-bit
+  # host unless told otherwise; flatpak-builder 1.4 passes this for you and
+  # 1.2 (Ubuntu 22.04, which the CI runners use) does not. The result is a
+  # .pc installed to /app/lib64/pkgconfig, which PKG_CONFIG_PATH never
+  # looks at — so the NEXT module in the chain fails with "Package
+  # 'libayatana-ido3-0.4' not found" while the library sits there installed.
+  # It built locally on 1.4.9 and failed in CI on 1.2.2; pinning makes both
+  # agree instead of depending on the builder's age.
+  - -DCMAKE_INSTALL_LIBDIR=lib
+  - -DENABLE_BINDINGS_MONO=OFF
+  - -DENABLE_BINDINGS_VALA=OFF
+  - -DENABLE_TESTS=OFF
+  # ENABLE_GTKDOC defaults ON, and its scangobj step links a throwaway
+  # binary WITHOUT the pkg-config library dirs — that, not the library, is
+  # what failed with "cannot find -ldbusmenu-glib" while
+  # libayatana-appindicator3.so.1.0.0 itself linked fine two steps earlier.
+  # We ship no gtk-doc, so build none.
+  - -DENABLE_GTKDOC=OFF
+  - -DCMAKE_SHARED_LINKER_FLAGS=-L/app/lib
+  - -DCMAKE_EXE_LINKER_FLAGS=-L/app/lib
+sources:
+  - type: archive
+    url: https://github.com/AyatanaIndicators/libayatana-appindicator/archive/refs/tags/0.5.94.tar.gz
+    sha256: 884a6bc77994c0b58c961613ca4c4b974dc91aa0f804e70e92f38a542d0d0f90
