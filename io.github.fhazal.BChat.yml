@@ -1,0 +1,108 @@
+id: io.github.fhazal.BChat
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+# PySide6 6.11 (Python 3.13) comes from the PySide base app; BChat needs PySide6 >= 6.6.
+base: io.qt.PySide.BaseApp
+base-version: '6.11'
+command: bchat
+finish-args:
+  - --share=network
+  - --share=ipc
+  # X11 (XWayland on a Wayland desktop), like the AppImage: Wayland doesn't let an app place its own windows,
+  # so the notification cards would land mid-screen instead of in the corner (see linuxdesk.platform_args)
+  - --socket=x11
+  - --device=dri
+  # sounds
+  - --socket=pulseaudio
+  # Speech: Qt's speechd voice engine (built below) talks to the desktop's own speech-dispatcher through its
+  # socket; the voices are the ones installed on the system. Qt looks for that engine in /app/lib/plugins too
+  - --filesystem=xdg-run/speech-dispatcher:ro
+  - --env=QT_PLUGIN_PATH=/app/lib/plugins
+  # IRC passwords live in the desktop's keyring (Secret Service)
+  - --talk-name=org.freedesktop.secrets
+  # the tray icon
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # /np reads the playing track from MPRIS music players
+  - --talk-name=org.mpris.MediaPlayer2.*
+  # received files (DCC) can go to the Downloads folder
+  - --filesystem=xdg-download
+build-options:
+  env:
+    BASEAPP_REMOVE_WEBENGINE: '1'
+    BASEAPP_DISABLE_NUMPY: '1'
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+  # build-time tools the base app ships (the binding generator and its LLVM/clang, ~150 MB) that nothing runs;
+  # a plain cleanup: list doesn't reach files that came from the base app
+  - >-
+    rm -rf ${FLATPAK_DEST}/bin/shiboken6 ${FLATPAK_DEST}/bin/shiboken6-genpyi ${FLATPAK_DEST}/bin/cffi-gen-src
+    ${FLATPAK_DEST}/lib/libLLVM.so* ${FLATPAK_DEST}/lib/libclang.so* ${FLATPAK_DEST}/lib/libclang-cpp.so*
+    ${FLATPAK_DEST}/lib/python3*/site-packages/shiboken6_generator
+modules:
+  - python3-deps.json
+
+  # Speech, part 1: the speech-dispatcher client library (libspeechd) only; the daemon and its voice modules are
+  # the desktop's own (reached through the socket in finish-args)
+  - name: libspeechd
+    buildsystem: simple
+    build-commands:
+      # configure insists on dotconf, which only the daemon uses and the runtime doesn't have: answer that check
+      # by hand. --disable-ltdl: nothing here loads modules
+      - >-
+        ./configure --prefix=${FLATPAK_DEST} --disable-static --disable-python --disable-doc --disable-ltdl
+        --with-systemdsystemunitdir=no --with-systemduserunitdir=no DOTCONF_CFLAGS=' ' DOTCONF_LIBS=' '
+      - make -C src/api/c install
+      - make -C include install
+      - make install-pkgconfigDATA
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /lib/libspeechd.so
+      - '*.la'
+    sources:
+      - type: archive
+        url: https://github.com/brailcom/speechd/releases/download/0.12.1/speech-dispatcher-0.12.1.tar.gz
+        sha256: b14a5238d287d2dcce4dd42bbd66ca65fa228e7e683708267f7b34036f7ba4b4
+
+  # Speech, part 2: Qt's speechd voice engine (the KDE runtime's Qt TextToSpeech has only its silent mock engine).
+  # Only the plugin is built and installed, against the runtime's Qt, so the source must be the runtime's exact Qt
+  # version (6.11.3 in org.kde.Platform 6.11); QT_PLUGIN_PATH in finish-args points Qt at it
+  - name: qtspeech-speechd
+    buildsystem: simple
+    build-commands:
+      - >-
+        cmake -S . -B _build -G Ninja -DCMAKE_BUILD_TYPE=Release -DQT_BUILD_EXAMPLES=OFF -DQT_BUILD_TESTS=OFF
+        -DFEATURE_speechd=ON -DFEATURE_flite=OFF -DCMAKE_SKIP_RPATH=ON
+      - cmake --build _build --target QTextToSpeechSpeechdPlugin
+      - install -Dm755 -t ${FLATPAK_DEST}/lib/plugins/texttospeech _build/lib/plugins/texttospeech/libqtexttospeech_speechd.so
+    sources:
+      - type: archive
+        url: https://download.qt.io/archive/qt/6.11/6.11.3/submodules/qtspeech-everywhere-src-6.11.3.tar.xz
+        sha256: cfadb37721f20c2dc85926a1edbf6c165d9162ea38ccdb6cbc4466109a21578c
+
+  - name: bchat
+    buildsystem: simple
+    build-commands:
+      # About shows bchat/assets/version.txt; a local test build writes its own, a release takes the newest
+      # <release> in the metainfo (the one file that has to change for every release anyway)
+      - >-
+        test -s bchat/assets/version.txt ||
+        sed -n 's/.*<release version="\([^"]*\)".*/\1/p' io.github.fhazal.BChat.metainfo.xml | head -n1 | tr -d '\n'
+        > bchat/assets/version.txt
+      - pip3 install --no-deps --no-build-isolation --no-index --prefix=${FLATPAK_DEST} .
+      - install -Dm644 io.github.fhazal.BChat.desktop -t ${FLATPAK_DEST}/share/applications/
+      - install -Dm644 io.github.fhazal.BChat.metainfo.xml -t ${FLATPAK_DEST}/share/metainfo/
+      - install -Dm644 bchat/assets/bchat.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+    sources:
+      - type: git
+        url: https://github.com/fhazal/BChat.git
+        tag: v0.9.1
+        commit: 6d7f627919f420b9ff8ab7dab79961ff9f43fa63
+        x-checker-data:
+          type: git
+          tag-pattern: ^v([\d.]+)$
+      - type: file
+        path: io.github.fhazal.BChat.desktop
+      - type: file
+        path: io.github.fhazal.BChat.metainfo.xml
