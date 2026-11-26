@@ -1,0 +1,96 @@
+id: tr.gov.adalet.Eimza
+sdk: org.freedesktop.Sdk
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+command: adalet-eimza-tray
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk21
+tags:
+  - proprietary
+
+finish-args:
+  # Swing UI
+  - --share=ipc
+  - --socket=x11
+  # local service on 127.0.0.1:5975 and the ministry's signing servers
+  - --share=network
+  # smart card readers
+  - --socket=pcsc
+  # tray icon
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # settings and certificate store
+  - --persist=.java
+  - --persist=.sertifikadeposu
+
+modules:
+  # the Java bundled by upstream cannot find libpcsclite in the sandbox
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk21/install.sh
+
+  # client library only, pcscd runs on the host
+  - name: pcsc-lite
+    buildsystem: meson
+    config-opts:
+      - --libdir=lib
+      - -Dlibsystemd=false
+      - -Dlibudev=false
+      - -Dpolkit=false
+      - -Dusb=false
+      - -Dserial=false
+    cleanup:
+      - /bin
+      - /sbin
+      - /include
+      - /lib/pkgconfig
+      - /lib/systemd
+      - /share
+      - /etc
+      - /sysusers.d
+    sources:
+      - type: archive
+        url: https://pcsclite.apdu.fr/files/pcsc-lite-2.5.4.tar.xz
+        sha256: 23b1c644ab4f13269d3a9ff26734f473f622deff6ed60492171a9a25f603f078
+        x-checker-data:
+          type: html
+          url: https://pcsclite.apdu.fr/files/
+          version-pattern: pcsc-lite-(\d+(?:\.\d+)+)\.tar\.xz
+          url-template: https://pcsclite.apdu.fr/files/pcsc-lite-$version.tar.xz
+
+  # tray icon backend
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+
+  - name: adalet-eimza-tray
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 apply_extra.sh /app/bin/apply_extra
+      - install -Dm755 adalet-eimza-tray.sh /app/bin/adalet-eimza-tray
+      - install -Dm644 tr.gov.adalet.Eimza.desktop /app/share/applications/tr.gov.adalet.Eimza.desktop
+      - install -Dm644 tr.gov.adalet.Eimza.metainfo.xml /app/share/metainfo/tr.gov.adalet.Eimza.metainfo.xml
+      - install -Dm644 tr.gov.adalet.Eimza.png /app/share/icons/hicolor/256x256/apps/tr.gov.adalet.Eimza.png
+    sources:
+      # not redistributable; apply_extra keeps only the jar
+      - type: extra-data
+        filename: adalet-eimza-tray.deb
+        only-arches:
+          - x86_64
+        url: https://cdn.uyap.gov.tr/framework/public/adalet-eimza-tray_1.0.17_amd64.deb
+        sha256: 97f58f39edf0472c2bab6fadf7712dafb6eaa8bd31784febb1da95f231e8fb68
+        size: 72460296
+        x-checker-data:
+          type: json
+          url: https://cdn.uyap.gov.tr/framework/public/latest.json
+          version-query: .releases.ubuntu.latestVersion
+          url-query: .releases.ubuntu.downloadUrl
+          is-main-source: true
+      - type: file
+        path: platform/apply_extra.sh
+      - type: file
+        path: platform/adalet-eimza-tray.sh
+      - type: file
+        path: platform/tr.gov.adalet.Eimza.desktop
+      - type: file
+        path: tr.gov.adalet.Eimza.metainfo.xml
+      - type: file
+        path: platform/tr.gov.adalet.Eimza.png
