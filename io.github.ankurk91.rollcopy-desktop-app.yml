@@ -1,0 +1,100 @@
+id: io.github.ankurk91.rollcopy-desktop-app
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: rollcopy
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --filesystem=/run/usbmuxd
+  - --filesystem=xdg-pictures
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - /share/ffmpeg
+  - '*.a'
+  - '*.la'
+
+modules:
+  # HEVC decoder for the embedded libheif (libheif-rs `embedded-libheif`).
+  - name: libde265
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DENABLE_SDL=OFF
+      - -DENABLE_DECODER=OFF
+      - -DENABLE_ENCODER=OFF
+    sources:
+      - type: git
+        url: https://github.com/strukturag/libde265.git
+        tag: v1.1.3
+        commit: ba62bf4cfb3242f3bf0a45617ff09e35236e4d82
+
+  # zscale/tonemap for the H.264 (HDR -> SDR) mode.
+  - name: zimg
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+    sources:
+      - type: git
+        url: https://github.com/sekrit-twc/zimg.git
+        tag: release-3.0.6
+        commit: f819b14e8f39d1282400b0d9543e8ef73c1b2bbd
+
+  - name: x264
+    buildsystem: autotools
+    config-opts:
+      - --enable-shared
+      - --enable-pic
+      - --disable-cli
+    sources:
+      - type: git
+        url: https://code.videolan.org/videolan/x264.git
+        commit: b35605ace3ddf7c1a5d67a2eb553f034aef41d55
+
+  # ffmpeg/ffprobe must be in /app/bin; the app shells out to both.
+  - name: ffmpeg
+    config-opts:
+      - --enable-gpl
+      - --enable-shared
+      - --disable-static
+      - --disable-doc
+      - --disable-debug
+      - --disable-ffplay
+      - --enable-libx264
+      - --enable-libzimg
+      - --enable-vaapi
+    sources:
+      - type: git
+        url: https://github.com/FFmpeg/FFmpeg.git
+        tag: n9.1
+        commit: 74e4393595cf2b5857f0da925c4e0dd74ea306e5
+
+  - name: rollcopy
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/rollcopy/cargo
+        CARGO_NET_OFFLINE: 'true'
+    build-commands:
+      - cargo --offline build --release --locked -p rollcopy-app
+      - install -Dm755 target/release/rollcopy -t /app/bin/
+      - install -Dm644 packaging/io.github.ankurk91.rollcopy-desktop-app.desktop -t /app/share/applications/
+      - install -Dm644 packaging/io.github.ankurk91.rollcopy-desktop-app.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 packaging/icons/io.github.ankurk91.rollcopy-desktop-app.svg -t /app/share/icons/hicolor/scalable/apps/
+    sources:
+      - type: git
+        url: https://github.com/ankurk91/rollcopy-desktop-app.git
+        tag: v0.7.1
+        commit: 4226ae13250b01da3f5137ba9da6615f5c63e75b
+      - cargo-sources.json
