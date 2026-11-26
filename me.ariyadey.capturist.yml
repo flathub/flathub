@@ -1,0 +1,85 @@
+app-id: me.ariyadey.capturist
+runtime: org.gnome.Platform
+runtime-version: "50"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node24
+command: capturist
+finish-args:
+  - --socket=wayland # Needed to show the window on Wayland
+  - --socket=fallback-x11 # Fallback to X11 if Wayland is unavailable
+  - --share=ipc # Needed for performance reasons if the app falls back to X11
+  - --share=network # Todoist OAuth + API calls
+  - --device=dri # GPU / OpenGL acceleration
+  - --talk-name=org.freedesktop.Notifications # Desktop notifications
+  - --talk-name=org.gnome.Notifications # Fallback for GNOME
+  - --talk-name=org.kde.StatusNotifierWatcher # System tray icon
+  - --talk-name=org.freedesktop.secrets # OS keyring integration
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node24/bin
+  env:
+    CARGO_HOME: /run/build/capturist/cargo
+    CARGO_NET_OFFLINE: "true"
+    npm_config_cache: /run/build/capturist/flatpak-node/npm-cache
+    npm_config_offline: "true"
+modules:
+  - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
+
+  - name: libnotify
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://gitlab.gnome.org/GNOME/libnotify.git
+        tag: 0.8.6
+        commit: 131aad01ff5f563b4863becbb6ed84dac6e75d5a
+    config-opts:
+      - -Dtests=false
+      - -Dintrospection=disabled
+      - -Dman=false
+      - -Dgtk_doc=false
+      - -Ddocbook_docs=disabled
+
+  - name: capturist
+    buildsystem: simple
+    sources:
+      - type: git
+        url: https://github.com/ariyadey/capturist.git
+        tag: v0.4.2
+        commit: 2524489e2852ea3730a17be7359ab098021b3a71
+      - flatpak/cargo-sources.json
+      - flatpak/node-sources.json
+    # language=BASH
+    build-commands:
+      - |
+        set -eu
+
+        APP_ID="me.ariyadey.capturist"
+        APP_NAME="capturist"
+        APP_APPLICATIONS_DIR="/app/share/applications"
+        APP_ICON_128_DIR="/app/share/icons/hicolor/128x128/apps"
+        APP_ICON_512_DIR="/app/share/icons/hicolor/512x512/apps"
+        APP_METAINFO_DIR="/app/share/metainfo"
+        APP_LICENSE_DIR="/app/share/licenses/${APP_ID}"
+
+        # 1. Install frontend dependencies from the offline cache
+        npm install --offline --no-audit --no-fund
+
+        # 2. Build the app in release mode without bundling (runs the tauri beforeBuildCommand "npm run build")
+        npm run tauri -- build --no-bundle
+
+        # 3. Install the application binary
+        install -D -m 755 src-tauri/target/release/capturist /app/bin/capturist
+
+        # 4. Install icons (128x128 and 512x512)
+        install -D -m 644 src-tauri/icons/128x128.png "${APP_ICON_128_DIR}/${APP_ID}.png"
+        install -D -m 644 src-tauri/icons/icon.png "${APP_ICON_512_DIR}/${APP_ID}.png"
+
+        # 5. Install the desktop file, AppStream metainfo and license
+        install -D -m 644 src-tauri/Capturist.desktop "${APP_APPLICATIONS_DIR}/${APP_ID}.desktop"
+        install -D -m 644 me.ariyadey.capturist.metainfo.xml "${APP_METAINFO_DIR}/${APP_ID}.metainfo.xml"
+        install -D -m 644 LICENSE "${APP_LICENSE_DIR}/LICENSE"
+
+        # 6. Point the desktop entry at the sandboxed icon and binary (keep %u for OAuth deep links)
+        desktop-file-edit --set-icon="${APP_ID}" --set-key=Exec --set-value="${APP_NAME} %u" \
+          "${APP_APPLICATIONS_DIR}/${APP_ID}.desktop"
