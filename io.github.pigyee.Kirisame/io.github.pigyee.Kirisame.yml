@@ -1,0 +1,274 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Flathub submission manifest for Kirisame.
+#
+# This is the copy that goes into the flathub/<app-id> GitHub repository
+# (via build.flathub.org).  Differences from the local developer manifest
+# (io.github.pigyee.Kirisame.yml):
+#   * the app source is the pinned GitHub tag instead of a local checkout
+#   * every third-party tree that fetch-thirdparty.sh downloads for local
+#     builds is declared as a sha256-pinned archive source, because the
+#     Flathub build sandbox has no network access
+#   * p7zip compatibility headers are copied from the checkout in a build
+#     command (fetch-thirdparty.sh does that for local builds)
+#
+# Local test build:
+#   flatpak-builder --user --force-clean --disable-rofiles-fuse --jobs=32 \
+#       --repo=/tmp/kr2-flathub-repo /tmp/kr2-flathub-build \
+#       platform/linux/flatpak/io.github.pigyee.Kirisame.flathub.yml
+app-id: io.github.pigyee.Kirisame
+runtime: org.kde.Platform
+runtime-version: "6.11"
+sdk: org.kde.Sdk
+command: kirisame-library
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  - --share=network          # VNDB metadata + WebDAV cloud saves
+  - --filesystem=home        # games and save data live anywhere in $HOME
+  - --talk-name=org.freedesktop.Notifications
+  - --env=GTK_IM_MODULE=
+modules:
+  # --- GTK4 stack (org.kde.Platform ships GTK3 only) -----------------------
+  - name: gtk4
+    buildsystem: meson
+    config-opts:
+      - -Dintrospection=disabled
+      - -Dvulkan=disabled
+      - -Dmedia-gstreamer=disabled
+      - -Dbuild-demos=false
+      - -Dbuild-tests=false
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/gtk/4.14/gtk-4.14.5.tar.xz
+        sha256: 5547f2b9f006b133993e070b87c17804e051efda3913feaca1108fa2be41e24d
+
+  - name: libadwaita
+    buildsystem: meson
+    config-opts:
+      - -Dintrospection=disabled
+      - -Dvapi=false
+      - -Dtests=false
+      - -Dexamples=false
+      - -Dgtk_doc=false
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/libadwaita/1.5/libadwaita-1.5.0.tar.xz
+        sha256: fd92287df9bb95c963654fb6e70d3e082e2bcb37b147e0e3c905567167993783
+
+  # --- onsyuri deps missing from org.kde.Sdk --------------------------------
+  # onsyuri links bz2 at build time; the runtime ships libbz2.so.1 but the
+  # Sdk lacks headers and the dev .so symlinks.
+  - name: bzip2
+    buildsystem: simple
+    build-commands:
+      - make -f Makefile-libbz2_so -j$FLATPAK_BUILDER_N_JOBS
+      - install -Dm755 libbz2.so.1.0.8 /app/lib/libbz2.so.1.0.8
+      - ln -sf libbz2.so.1.0.8 /app/lib/libbz2.so.1.0
+      - ln -sf libbz2.so.1.0.8 /app/lib/libbz2.so.1
+      - ln -sf libbz2.so.1 /app/lib/libbz2.so
+      - install -Dm644 bzlib.h /app/include/bzlib.h
+    sources:
+      - type: archive
+        url: https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz
+        sha256: ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269
+
+  # onsyuri embeds a Lua interpreter (FindLua: liblua.a + lua.h suffice).
+  - name: lua
+    buildsystem: simple
+    build-commands:
+      - make -C src liblua.a -j$FLATPAK_BUILDER_N_JOBS MYCFLAGS=-fPIC
+      - install -Dm644 src/liblua.a /app/lib/liblua.a
+      - install -Dm644 src/lua.h src/luaconf.h src/lualib.h src/lauxlib.h src/lua.hpp /app/include
+    sources:
+      - type: archive
+        url: https://www.lua.org/ftp/lua-5.4.7.tar.gz
+        sha256: 9fbf5e28ef86c69858f6d3d34eccc32e911c1a28b4120ff3e84aaa70cfbf1e30
+
+  # --- engine deps missing from org.kde.Sdk ---------------------------------
+  - name: lz4
+    buildsystem: cmake-ninja
+    subdir: build/cmake
+    config-opts:
+      - -DBUILD_SHARED_LIBS=ON
+      - -DLZ4_BUILD_CLI=OFF
+      - -DLZ4_BUILD_LEGACY_LZ4C=OFF
+    sources:
+      - type: archive
+        url: https://github.com/lz4/lz4/archive/refs/tags/v1.10.0.tar.gz
+        sha256: 537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b
+
+  - name: glew
+    buildsystem: cmake-ninja
+    subdir: build/cmake
+    config-opts:
+      - -DBUILD_UTILS=OFF
+      - -DCMAKE_INSTALL_LIBDIR=lib
+    # The Sdk has no libGLU and the engine does not use it; drop glew.pc's
+    # historical "Requires: glu" so pkg-config resolves glew.
+    post-install:
+      - sed -i '/^Requires:.*/d' /app/lib/pkgconfig/glew.pc
+    sources:
+      - type: archive
+        url: https://github.com/nigels-com/glew/releases/download/glew-2.3.0/glew-2.3.0.tgz
+        sha256: b261a06dfc8b970e0a1974488530e58dd2390acf68acb05b45235cd6fb17a086
+
+  - name: libjpeg-turbo
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DWITH_TURBOJPEG=ON
+      - -DWITH_FUZZ=OFF
+    sources:
+      - type: archive
+        url: https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/3.1.0.tar.gz
+        sha256: 35fec2e1ddfb05ecf6d93e50bc57c1e54bc81c16d611ddf6eff73fff266d8285
+
+  - name: opencv
+    buildsystem: cmake-ninja
+    builddir: true
+    # OpenCV 4.11's internal cmake scripts predate CMake 4 (Sdk 6.11 ships
+    # it); accept the old policies instead of failing the build.  The env
+    # var also reaches OpenCVGenPkgconfig.cmake, which runs in script mode
+    # (cmake -P) and ignores the configure cache.
+    build-options:
+      env:
+        CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+    config-opts:
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - -DBUILD_LIST=core,imgproc
+      - -DBUILD_SHARED_LIBS=ON
+      - -DWITH_ITT=OFF
+      - -DWITH_OPENCL=OFF
+      - -DWITH_IPP=OFF
+      - -DWITH_TBB=OFF
+      - -DWITH_EIGEN=OFF
+      - -DWITH_OPENEXR=OFF
+      - -DBUILD_TESTS=OFF
+      - -DBUILD_PERF_TESTS=OFF
+      - -DBUILD_EXAMPLES=OFF
+      - -DBUILD_opencv_apps=OFF
+      - -DBUILD_opencv_python3=OFF
+      - -DBUILD_opencv_python2=OFF
+      - -DBUILD_JPEG=OFF
+      - -DBUILD_PNG=OFF
+      - -DBUILD_ZLIB=OFF
+      - -DOPENCV_GENERATE_PKGCONFIG=ON
+    sources:
+      - type: archive
+        url: https://github.com/opencv/opencv/archive/refs/tags/4.11.0.tar.gz
+        sha256: 9a7c11f924eff5f8d8070e297b322ee68b9227e003fd600d4b8122198091665f
+
+  # Private FFmpeg 4.4.x (engine refuses libavcodec >= 59).
+  - name: ffmpeg4
+    buildsystem: autotools
+    builddir: true
+    config-opts:
+      - --disable-doc
+      - --disable-programs
+      - --disable-static
+      - --enable-shared
+      - --disable-network
+      - --disable-encoders
+      - --disable-muxers
+      - --enable-avcodec
+      - --enable-avformat
+      - --enable-avutil
+      - --enable-swscale
+      - --enable-swresample
+      - --enable-avfilter
+      - --disable-xlib
+      - --disable-libxcb
+      - --disable-sdl2
+      - --disable-vaapi
+      - --disable-vdpau
+    sources:
+      - type: git
+        url: https://git.ffmpeg.org/ffmpeg.git
+        tag: n4.4.5
+        commit: 9bcede27c26b2f7cd469ab6b5c8b9694c30cfca3
+
+
+  # Sdk 6.11 (freedesktop 25.08) dropped SDL2_ttf and SDL2_image from the
+  # runtime and Sdk; onsyuri needs both.  The shared libraries land in
+  # /app/lib and are bundled with the app at runtime.
+  - name: sdl2-ttf
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_SHARED_LIBS=ON
+      - -DSDLTTF_INSTALL=ON
+    sources:
+      - type: archive
+        url: https://github.com/libsdl-org/SDL_ttf/releases/download/release-2.24.0/SDL2_ttf-2.24.0.tar.gz
+        sha256: 0b2bf1e7b6568adbdbc9bb924643f79d9dedafe061fa1ed687d1d9ac4e453bfd
+
+  - name: sdl2-image
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DBUILD_SHARED_LIBS=ON
+    sources:
+      - type: archive
+        url: https://github.com/libsdl-org/SDL_image/releases/download/release-2.8.8/SDL2_image-2.8.8.tar.gz
+        sha256: 2213b56fdaff2220d0e38c8e420cbe1a83c87374190cba8c70af2156097ce30a
+
+  - name: kirisame
+    buildsystem: simple
+    build-commands:
+      # p7zip lands as third_party/7zip; overlay the Linux compat headers
+      # from the checkout (fetch-thirdparty.sh does this for local builds).
+      - cp platform/linux/compat/p7zip/* third_party/7zip/C/
+      # blend2d: the Sdk's glibc removed the LFS64 names; apply the same
+      # idempotent patch fetch-thirdparty.sh applies for local builds.
+      - python3 scripts/linux/patch-blend2d.py third_party/blend2d/src/blend2d/api-build_p.h
+      # GLEW_NO_GLU: the Sdk has no GL/glu.h and the engine does not use GLU.
+      - cmake -B build-flat -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+              -DKR2_BUNDLE_FFMPEG=OFF -DCMAKE_INSTALL_PREFIX=/app
+              -DCMAKE_C_FLAGS=-DGLEW_NO_GLU -DCMAKE_CXX_FLAGS=-DGLEW_NO_GLU
+      - cmake --build build-flat
+      - cmake --install build-flat
+      # Flathub conventions: the primary desktop file and icon carry the app
+      # id, and AppStream metadata lives in /app/share/metainfo.
+      - mv /app/share/applications/kirisame-library.desktop
+              /app/share/applications/io.github.pigyee.Kirisame.desktop
+      - sed -i 's/^Icon=kirisame-library$/Icon=io.github.pigyee.Kirisame/'
+              /app/share/applications/io.github.pigyee.Kirisame.desktop
+      - mv /app/share/icons/hicolor/256x256/apps/kirisame-library.png
+              /app/share/icons/hicolor/256x256/apps/io.github.pigyee.Kirisame.png
+      - install -Dm644
+              platform/linux/flatpak/io.github.pigyee.Kirisame.metainfo.xml
+              /app/share/metainfo/io.github.pigyee.Kirisame.metainfo.xml
+    sources:
+      # Application source: pinned release tag.
+      - type: git
+        url: https://github.com/pigyee/Kirisame.git
+        tag: v1.3.9
+        commit: 8e81644f95d126e8b2a08580b45921ed57ec03a8
+      # Everything below mirrors scripts/linux/fetch-thirdparty.sh pins.
+      - type: archive
+        url: https://github.com/cocos2d/cocos2d-x/archive/refs/tags/cocos2d-x-3.17.2.tar.gz
+        sha256: f4be12d1637ffd1b9ee5fe0f8072a7681ec709127e942cfaa8d3f13285bac6de
+        dest: third_party/cocos2d-x
+      - type: archive
+        url: https://github.com/cocos2d/cocos2d-x-3rd-party-libs-bin/archive/v3-deps-158.zip
+        sha256: d591197016ff6f16fb8fff07b13bc7cb381efbe9a177ea9a0c4089c303139757
+        dest: third_party/cocos2d-x/external
+      - type: archive
+        url: https://github.com/blend2d/blend2d/archive/d2027ebfd6aaf53b190b6b3b497425fc85f14251.tar.gz
+        sha256: 70d8d801b12491d119ed285f95c4ee0d1b6dff4dd41bb846d9fb1e8dcd8412c9
+        dest: third_party/blend2d
+      - type: archive
+        url: https://downloads.sourceforge.net/project/p7zip/p7zip/16.02/p7zip_16.02_src_all.tar.bz2
+        sha256: 5eb20ac0e2944f6cb9c2d51dd6c4518941c185347d4089ea89087ffdd6e2341f
+        dest: third_party/7zip
+      - type: archive
+        url: https://www.rarlab.com/rar/unrarsrc-6.0.7.tar.gz
+        sha256: a7029942006cbcced3f3b7322ec197683f8e7be408972ca08099b196c038f518
+        dest: third_party/unrar
+      - type: archive
+        url: https://github.com/YuriSizuku/OnscripterYuri/archive/c8d053c1af1e80900974ee184d645b1bdf03bc74.tar.gz
+        sha256: 02c0f0afb452a78a033641ebba5f1301126e1440f1f7b04bc62e1e71f9094b04
+        dest: third_party/onsyuri
