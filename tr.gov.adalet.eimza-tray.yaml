@@ -1,0 +1,105 @@
+id: tr.gov.adalet.eimza-tray
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: adalet-eimza-tray
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.openjdk21
+
+finish-args:
+  # Swing UI
+  - --share=ipc
+  - --socket=x11
+  # local service on 127.0.0.1:5975 and the ministry's signing servers
+  - --share=network
+  # smart card readers
+  - --socket=pcsc
+  # tray icon
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # settings and certificate store
+  - --persist=.java
+  - --persist=.sertifikadeposu
+
+modules:
+  # the Java bundled by upstream cannot find libpcsclite in the sandbox
+  - name: openjdk
+    buildsystem: simple
+    build-commands:
+      - /usr/lib/sdk/openjdk21/install.sh
+
+  # client library only, pcscd runs on the host
+  - name: pcsc-lite
+    buildsystem: meson
+    config-opts:
+      - --libdir=lib
+      - -Dlibsystemd=false
+      - -Dlibudev=false
+      - -Dpolkit=false
+      - -Dusb=false
+      - -Dserial=false
+    cleanup:
+      - /bin
+      - /sbin
+      - /include
+      - /lib/pkgconfig
+      - /lib/systemd
+      - /share/doc
+      - /share/man
+      - /share/polkit-1
+      - /etc
+      - /sysusers.d
+    sources:
+      - type: archive
+        url: https://pcsclite.apdu.fr/files/pcsc-lite-2.5.4.tar.xz
+        sha256: 23b1c644ab4f13269d3a9ff26734f473f622deff6ed60492171a9a25f603f078
+        x-checker-data:
+          type: html
+          url: https://pcsclite.apdu.fr/files/
+          version-pattern: pcsc-lite-(\d+(?:\.\d+)+)\.tar\.xz
+          url-template: https://pcsclite.apdu.fr/files/pcsc-lite-$version.tar.xz
+
+  # tray icon backend
+  - shared-modules/libappindicator/libappindicator-gtk3-12.10.json
+
+  - name: adalet-eimza-tray
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 apply_extra.sh /app/bin/apply_extra
+      - install -Dm755 adalet-eimza-tray.sh /app/bin/adalet-eimza-tray
+      - install -Dm644 dialogs.sh -t /app/libexec/
+      - install -Dm755 plasmashell /app/bin/plasmashell
+      - install -Dm644 tr.gov.adalet.eimza-tray.desktop -t /app/share/applications/
+      - install -Dm644 tr.gov.adalet.eimza-tray.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 tr.gov.adalet.eimza-tray.png -t /app/share/icons/hicolor/256x256/apps/
+    sources:
+      # not redistributable; apply_extra keeps only the jar
+      - type: extra-data
+        url: https://cdn.uyap.gov.tr/framework/public/adalet-eimza-tray_1.0.17_amd64.deb
+        sha256: 97f58f39edf0472c2bab6fadf7712dafb6eaa8bd31784febb1da95f231e8fb68
+        size: 72460296
+        filename: adalet-eimza-tray.deb
+        only-arches:
+          - x86_64
+        x-checker-data:
+          type: json
+          url: https://cdn.uyap.gov.tr/framework/public/latest.json
+          version-query: .releases.ubuntu.latestVersion
+          url-query: .releases.ubuntu.downloadUrl
+          is-main-source: true
+      - type: file
+        path: platform/apply_extra.sh
+      - type: file
+        path: platform/adalet-eimza-tray.sh
+      - type: file
+        path: platform/dialogs.sh
+      # the tray library asks for the Plasma version to pick the tray type
+      - type: script
+        dest-filename: plasmashell
+        commands:
+          - echo "plasmashell 6.0.0"
+      - type: file
+        path: platform/tr.gov.adalet.eimza-tray.desktop
+      - type: file
+        path: tr.gov.adalet.eimza-tray.metainfo.xml
+      - type: file
+        path: platform/tr.gov.adalet.eimza-tray.png
