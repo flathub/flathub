@@ -1,0 +1,111 @@
+# Flatpak manifest for Channel Flow (ForgeLabs Studios LLC)
+# Local build:  flatpak run org.flatpak.Builder --user --install --force-clean build-dir com.forgelabsstudios.ChannelFlow.yml
+id: com.forgelabsstudios.ChannelFlow
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: channelflow
+
+# Full FFmpeg codecs (H.264, HEVC, AC3, ...): since Freedesktop 25.08 / GNOME 49 the runtime installs
+# org.freedesktop.Platform.codecs-extra automatically, so no ffmpeg-full / codecs extension stanza is needed.
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --socket=pulseaudio
+  # Passwords use libsecret, which goes through the Secret portal inside the sandbox (no D-Bus talk-name).
+  # M3U files are opened with the file chooser portal (Gtk.FileDialog), so no filesystem access.
+
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - /share/doc
+  - '*.la'
+  - '*.a'
+
+modules:
+  - name: libass
+    config-opts:
+      - --disable-static
+    sources:
+      - type: git
+        url: https://github.com/libass/libass.git
+        tag: 0.17.5
+        commit: 4a05d8127f525943ebf45fdc6497c9e665947f0d
+        x-checker-data:
+          type: git
+          tag-pattern: ^(\d\.\d{1,3}\.\d{1,2})$
+
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Dvulkan=disabled
+      - -Dshaderc=disabled
+      - -Dglslang=disabled
+      - -Dopengl=enabled
+      - -Ddemos=false
+      - -Dtests=false
+    sources:
+      - type: git
+        url: https://code.videolan.org/videolan/libplacebo.git
+        tag: v7.387.0
+        commit: 275f7dea27924cdd34ab2e6c20e448b6bc4fab65
+
+  - name: mpv
+    buildsystem: meson
+    config-opts:
+      # LGPL build: Channel Flow is proprietary, so libmpv must not include GPL-only code
+      - -Dgpl=false
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dlua=disabled
+      - -Djavascript=disabled
+      - -Dvulkan=disabled
+      - -Dmanpage-build=disabled
+      - -Dhtml-build=disabled
+      - -Dpdf-build=disabled
+      - -Dbuild-date=false
+      - -Dwerror=false
+    cleanup:
+      - /share/applications
+      - /share/icons
+      - /share/zsh
+      - /share/bash-completion
+      - /share/fish
+      - /etc
+    sources:
+      - type: git
+        url: https://github.com/mpv-player/mpv.git
+        tag: v0.42.0
+        commit: b0841e8c4d156b8403dc1876c4cbd9011eb583f3
+        x-checker-data:
+          type: json
+          url: https://api.github.com/repos/mpv-player/mpv/releases/latest
+          tag-query: .tag_name
+          version-query: $tag | sub("^v"; "")
+          timestamp-query: .published_at
+
+  # Channel Flow itself is proprietary (Copyright (c) 2026 ForgeLabs Studios LLC, all rights reserved).
+  # It is consumed as a prebuilt release archive that contains Python bytecode only (no .py sources),
+  # compiled for the runtime's Python (GNOME 51 = Python 3.14).
+  - name: channelflow
+    buildsystem: simple
+    build-commands:
+      - test ! -e channelflow/app.py   # release archive must be bytecode-only
+      - install -d ${FLATPAK_DEST}/share/channelflow
+      - cp -r channelflow ${FLATPAK_DEST}/share/channelflow/
+      - install -Dm755 data/channelflow.sh ${FLATPAK_DEST}/bin/channelflow
+      - install -Dm644 data/com.forgelabsstudios.ChannelFlow.desktop ${FLATPAK_DEST}/share/applications/com.forgelabsstudios.ChannelFlow.desktop
+      - install -Dm644 data/com.forgelabsstudios.ChannelFlow.metainfo.xml ${FLATPAK_DEST}/share/metainfo/com.forgelabsstudios.ChannelFlow.metainfo.xml
+      - for s in 64 128 256 512; do install -Dm644 data/icons/com.forgelabsstudios.ChannelFlow-$s.png ${FLATPAK_DEST}/share/icons/hicolor/${s}x${s}/apps/com.forgelabsstudios.ChannelFlow.png; done
+      - install -Dm644 EULA.txt ${FLATPAK_DEST}/share/licenses/com.forgelabsstudios.ChannelFlow/EULA.txt
+      - install -Dm644 COPYRIGHT ${FLATPAK_DEST}/share/licenses/com.forgelabsstudios.ChannelFlow/COPYRIGHT
+    sources:
+      # Public download URL of the release archive: TO BE DECIDED AND CREATED BY THE OWNER
+      # (e.g. a GitHub Release asset on a public "channelflow-desktop-releases" repo, or a Cloudflare R2 URL).
+      - type: archive
+        url: https://downloads.forgelabsstudios.com/channelflow/1.0.0/channelflow-1.0.0-linux-bin.tar.gz
+        sha256: 584dca5b07885c2c7a1579ac9b306a3c763f76c1694573630c1f1d5741b4be61
