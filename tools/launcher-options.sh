@@ -7,7 +7,7 @@
 set -e
 cd "$(dirname "$0")/.."
 
-url=${1:-$(grep -o 'https://cdn\.uyap\.gov\.tr/[^ ]*\.deb' tr.gov.adalet.Eimza.yaml)}
+url=${1:-$(grep -o 'https://cdn\.uyap\.gov\.tr/[^ ]*\.deb' tr.gov.adalet.eimza-tray.yaml)}
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
