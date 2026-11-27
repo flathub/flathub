@@ -1,0 +1,78 @@
+id: dev.sevenpitch.jap
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+
+command: jap-studio
+
+finish-args:
+  # Gráficos y ventanas (GPUI / Wayland / X11 / Vulkan)
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+
+  # Colaboración P2P en vivo (Loro + Iroh QUIC)
+  - --share=network
+
+  # Audio de baja latencia (PipeWire / PulseAudio)
+  - --socket=pulseaudio
+  - --filesystem=xdg-run/pipewire-0
+
+  # Bibliotecas de audio, proyectos y plugins VST3/CLAP del usuario
+  - --filesystem=xdg-music
+  - --filesystem=xdg-documents
+  - --filesystem=~/.vst3:ro
+  - --filesystem=~/.clap:ro
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/jap-studio/cargo
+    CARGO_INCREMENTAL: '0'
+    RUST_BACKTRACE: '1'
+
+modules:
+  # Módulo 1: Motor C++ Sampler (sfizz 1.2.3)
+  - name: sfizz
+    buildsystem: cmake-ninja
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /lib/cmake
+      - /share/man
+      - '*.a'
+      - '*.la'
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DSFIZZ_JACK=OFF
+      - -DSFIZZ_RENDER=OFF
+      - -DSFIZZ_TESTS=OFF
+      - -DSFIZZ_SHARED=ON
+      - -DSFIZZ_GIT_SUBMODULE_CHECK=OFF
+    sources:
+      - type: git
+        url: https://github.com/sfztools/sfizz.git
+        tag: 1.2.3
+        commit: 4e70dc0bef53b41f2853ed46e26f5911114c92d0
+
+  # Módulo 2: Jap Studio (Rust + GPUI)
+  - name: jap-studio
+    buildsystem: simple
+    build-commands:
+      - cargo --offline build --release --features ui,p2p --bin daw-gpui
+      - install -Dm755 target/release/daw-gpui /app/share/jap-studio/hay-daw
+      - install -Dm755 packaging/flatpak/jap-studio-launcher.sh /app/bin/jap-studio
+      - install -Dm644 packaging/flatpak/dev.sevenpitch.jap.desktop /app/share/applications/dev.sevenpitch.jap.desktop
+      - install -Dm644 packaging/flatpak/dev.sevenpitch.jap.metainfo.xml /app/share/metainfo/dev.sevenpitch.jap.metainfo.xml
+      - install -Dm644 assets/icons/hay-app-icon-release.svg /app/share/icons/hicolor/scalable/apps/dev.sevenpitch.jap.svg
+      - mkdir -p /app/share/jap-studio/assets
+      - cp -a assets/icons assets/scripts assets/textures assets/themes assets/soundfonts /app/share/jap-studio/assets/
+    sources:
+      - type: git
+        url: https://github.com/burdier/jap-studio.git
+        tag: v0.8.0
+        commit: 002df6fe15a9b95f13430e7766349da9ba828d9a
+      - cargo-sources.json
