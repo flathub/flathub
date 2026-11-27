@@ -15,6 +15,8 @@ flatpak run tr.gov.adalet.eimza-tray
 - Uygulama tarayıcıya `127.0.0.1:5975` adresinden hizmet verir. Önce bakanlığın deb
   paketini veya AppImage'ını kaldırın, yoksa ikisi de aynı portu kullanmaya çalışır.
 - Oturum açılışında kendiliğinden başlamaz. İmzalamadan önce uygulamayı başlatın.
+- Sistem tepsisi olmayan GNOME masaüstlerinde "AppIndicator and KStatusNotifierItem
+  Support" eklentisini kurun.
 
 ## Derleme
 
@@ -35,3 +37,6 @@ kontrol edin:
 ```bash
 tools/launcher-options.sh | diff tools/launcher-options.txt -
 ```
+
+> **Not:** Bu seçenekler eksikken uygulama AKİS kartları okuyamıyor;
+> `tools/launcher-options.txt` paketlenen sürümdeki seçeneklerin kaydıdır.
