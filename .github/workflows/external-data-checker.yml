@@ -1,0 +1,68 @@
+name: 'Check if external data changed across Flathub org'
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+
+  workflow_dispatch:
+    inputs:
+      app_id:
+        description: 'Application ID to check instead of the global shard'
+        required: false
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  flathub-data-checker-global:
+    runs-on: ubuntu-latest
+    timeout-minutes: 230
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(inputs.app_id != '' && '[0]' || '[0,1,2,3,4,5]') }}
+    steps:
+        # 7.0.1
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Prepare report directories
+        run: mkdir -p checker-health checker-selection
+
+      - uses: ./.github/actions/flatpak-external-data-checker
+        timeout-minutes: 210
+        env:
+          GITHUB_TOKEN: ${{ secrets.FLATHUBBOT_TOKEN }}
+          APP_ID: ${{ inputs.app_id }}
+          SHARD: ${{ matrix.shard }}
+
+      - name: Make checker reports readable
+        if: always()
+        run: |
+          mkdir -p checker-health checker-selection
+          sudo chown -R "$(id -u):$(id -g)" checker-health checker-selection
+
+      - name: Retain checker health reports
+        if: always()
+        # 4.6.2
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: checker-health-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
+          path: checker-health/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Retain repository selection inventory
+        if: always()
+        # 4.6.2
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: checker-selection-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
+          path: checker-selection/
+          retention-days: 30
+          if-no-files-found: warn
