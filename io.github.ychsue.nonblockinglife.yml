@@ -1,0 +1,54 @@
+id: io.github.ychsue.nonblockinglife
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet10
+command: io.github.ychsue.nonblockinglife
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=x11
+  - --socket=pulseaudio
+  - --device=dri
+modules:
+  - name: NonBlockingLife
+    buildsystem: simple
+    build-options:
+      # 💡 This line is quite important! It adds the dotnet10 command path to the environment variable
+      append-path: /usr/lib/sdk/dotnet10/bin
+      env:
+        DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+        DOTNET_NOLOGO: '1'
+        WEBKIT_FORCE_SANDBOX: '0'
+    build-commands:
+      # According to $FLATPAK_ARCH we can determine the target runtime for dotnet restore and publish commands
+      - |
+        set -e
+        if [ "$FLATPAK_ARCH" = "x86_64" ]; then
+          DOTNET_RID="linux-x64"
+          echo "Building for runtime: $DOTNET_RID"
+        elif [ "$FLATPAK_ARCH" = "aarch64" ]; then
+          DOTNET_RID="linux-arm64"
+          echo "Building for runtime: $DOTNET_RID"
+        else
+          echo "Unsupported FLATPAK_ARCH: $FLATPAK_ARCH"
+          exit 1
+        fi
+        dotnet restore desktop/src/Nbl.Desktop/Nbl.Desktop.csproj --packages /run/build/NonBlockingLife/nuget-packages -s nuget-sources -r "$DOTNET_RID"
+        dotnet restore desktop/src/Nbl.Bridge/Nbl.Bridge.csproj --packages /run/build/NonBlockingLife/nuget-packages -s nuget-sources -r "$DOTNET_RID"
+        dotnet publish desktop/src/Nbl.Desktop/Nbl.Desktop.csproj -c Release -r "$DOTNET_RID" --self-contained true --no-restore -p:PublishAot=false -p:RuntimeIdentifiers="$DOTNET_RID" -p:RestorePackagesPath=/run/build/NonBlockingLife/nuget-packages -p:NblUseSystemBass=true -o /app/lib/nonblockinglife
+      - mkdir -p /app/bin
+      - ln -s /app/lib/nonblockinglife/Nbl.Desktop /app/bin/io.github.ychsue.nonblockinglife
+      - install -Dm644 desktop/io.github.ychsue.nonblockinglife.desktop /app/share/applications/io.github.ychsue.nonblockinglife.desktop
+      - install -Dm644 desktop/io.github.ychsue.nonblockinglife.png /app/share/icons/hicolor/256x256/apps/io.github.ychsue.nonblockinglife.png
+    # 🔥 Important: Install the metainfo.xml to the AppStream standard directory
+      - install -Dm644 desktop/io.github.ychsue.nonblockinglife.metainfo.xml /app/share/metainfo/io.github.ychsue.nonblockinglife.metainfo.xml
+    sources:
+      - type: git
+        url: https://github.com/ychsue/NonBlockingLife/
+        commit: 54a58a47593a3db35a95a7abde1db18cbdc8a56e
+        tag: v3.3.1
+      - ./nuget-sources.json
+      - ./nuget-sources-x86_64.json
+      - ./nuget-sources-aarch64.json
