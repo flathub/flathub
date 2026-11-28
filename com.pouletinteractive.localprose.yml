@@ -1,0 +1,85 @@
+app-id: com.pouletinteractive.localprose
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: localprose
+
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --socket=pulseaudio
+  - --share=network
+
+modules:
+  - name: localprose
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/localprose /app/bin /app/share/metainfo
+      - cp -a . /app/localprose/
+      - install -Dm644 com.pouletinteractive.localprose.metainfo.xml /app/share/metainfo/com.pouletinteractive.localprose.metainfo.xml
+      - rm -f /app/localprose/com.pouletinteractive.localprose.metainfo.xml
+      - chmod 755 /app/localprose/localprose
+      - |
+        if [ -f /app/localprose/runtime/ollama/ollama ]; then chmod 755 /app/localprose/runtime/ollama/ollama; fi
+        if [ -f /app/localprose/runtime/ollama/bin/ollama ]; then chmod 755 /app/localprose/runtime/ollama/bin/ollama; fi
+        if [ -f /app/localprose/runtime/ollama/lib/ollama/llama-server ]; then chmod 755 /app/localprose/runtime/ollama/lib/ollama/llama-server; fi
+        if [ -f /app/localprose/runtime/ollama/lib/ollama/llama-quantize ]; then chmod 755 /app/localprose/runtime/ollama/lib/ollama/llama-quantize; fi
+      - |
+        cat << 'LAUNCHER' > /app/bin/localprose
+        #!/bin/sh
+        export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:+$LD_LIBRARY_PATH:}/app/localprose/lib:/app/localprose/runtime/ollama/lib/ollama"
+        if [ -z "${HOME:-}" ]; then
+          export HOME="${XDG_DATA_HOME%/*}"
+        fi
+        exec /app/localprose/localprose "$@"
+        LAUNCHER
+      - chmod 755 /app/bin/localprose
+      - |
+        python3 - << 'PYICON'
+        import shutil, struct
+        from pathlib import Path
+        p = Path("localprose.png")
+        if p.exists():
+            with open(p, "rb") as f:
+                hdr = f.read(24)
+            w, h = struct.unpack(">II", hdr[16:24])
+            dest = Path(f"/app/share/icons/hicolor/{w}x{h}/apps")
+            dest.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(p, dest / "com.pouletinteractive.localprose.png")
+        PYICON
+      - |
+        cat << 'DESKTOP' > com.pouletinteractive.localprose.desktop
+        [Desktop Entry]
+        Name=LocalProse
+        Comment=100% offline novel writing studio with local AI
+        Comment[fr]=Atelier d'écriture de romans 100 % hors-ligne avec IA locale
+        Comment[de]=100 % Offline-Schreibstudio für Romane mit lokaler KI
+        Comment[es]=Estudio de escritura de novelas 100 % sin conexión con IA local
+        Comment[it]=Studio di scrittura di romanzi 100% offline con IA locale
+        Comment[pt]=Estúdio de escrita de romances 100% offline com IA local
+        Comment[nl]=100% offline schrijfstudio voor romans met lokale AI
+        Exec=localprose
+        Icon=com.pouletinteractive.localprose
+        Terminal=false
+        Type=Application
+        Categories=Office;WordProcessor;
+        Keywords=writing;novel;manuscript;worldbuilding;markdown;epub;offline;
+        Keywords[fr]=écriture;roman;manuscrit;univers;markdown;epub;hors-ligne;
+        Keywords[de]=schreiben;roman;manuskript;weltenbau;markdown;epub;offline;
+        Keywords[es]=escritura;novela;manuscrito;mundos;markdown;epub;offline;
+        Keywords[it]=scrittura;romanzo;manoscritto;worldbuilding;markdown;epub;offline;
+        Keywords[pt]=escrita;romance;manuscrito;mundos;markdown;epub;offline;
+        Keywords[nl]=schrijven;roman;manuscript;wereldbouw;markdown;epub;offline;
+        StartupWMClass=localprose
+        DESKTOP
+      - install -Dm644 com.pouletinteractive.localprose.desktop /app/share/applications/com.pouletinteractive.localprose.desktop
+      - rm -f com.pouletinteractive.localprose.desktop
+    sources:
+      - type: archive
+        only-arches:
+          - x86_64
+        url: https://github.com/alexpoulet/localprose-releases/releases/download/v4.0/LocalProse-Setup_4.0.2-linux.tar.gz
+        sha256: a17cb06b23045a6e0e37a0154dbd4c4081006838a7ecadddac187ca424ff1ee5
+        strip-components: 0
