@@ -1,0 +1,141 @@
+app-id: com.naps2.Naps2
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+command: naps2
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet10
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  - --device=usb
+  - --device-if=all:!has-usb-device
+  - --share=network
+  - --system-talk-name=org.freedesktop.Avahi
+cleanup:
+  - /include
+  - /lib/*.a
+  - /lib64/*.a
+  - /lib/*.la
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /share/doc
+  - /share/man
+modules:
+  # Custom pixbuf build for https://github.com/cyanfish/naps2/issues/843. This won't be necessary after upgrading
+  # to runtime 27.08 as newer pixbuf fixes the issue. But our patched build avoids using glycin specifically for
+  # png/jpeg/tiff which fixes the problem without requiring any additional installation dependencies.
+  - name: gdk-pixbuf
+    buildsystem: meson
+    config-opts:
+      - -Dglycin=enabled
+      - -Dpng=enabled
+      - -Djpeg=enabled
+      - -Dtiff=enabled
+      - -Dgif=disabled
+      - -Dothers=disabled
+      - -Dbuiltin_loaders=glycin,png,jpeg,tiff
+      - -Dintrospection=disabled
+      - -Dthumbnailer=disabled
+      - -Dman=false
+      - -Dtests=false
+      - -Dinstalled_tests=false
+    cleanup:
+      - /bin/gdk-pixbuf-*
+    sources:
+      - type: git
+        url: https://gitlab.gnome.org/GNOME/gdk-pixbuf.git
+        tag: 2.44.7
+        commit: 3377ae234c5e2baebfaa08bca0a71541d7e9fa79
+      - type: patch
+        path: gdk-pixbuf-native-loaders.patch
+  - name: leptonica
+    buildsystem: cmake-ninja
+    builddir: true
+    license-files:
+      - leptonica-license.txt
+    sources:
+      - type: git
+        url: https://github.com/DanBloomberg/leptonica
+        tag: 1.87.0
+        commit: 13275a278eb55b5746e33f95fbf5a2c8f604b3ab
+  - name: tesseract
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DDISABLED_LEGACY_ENGINE=ON
+      - -DBUILD_TRAINING_TOOLS=OFF
+      - -DENABLE_LTO=ON
+    cleanup:
+      - /app/share/tessdata
+    sources:
+      - type: git
+        url: https://github.com/tesseract-ocr/tesseract
+        tag: 5.5.0
+        commit: 64eab6c457b2337dd690746a5fde5c222b40d5f8
+  - name: avahi
+    buildsystem: autotools
+    config-opts:
+      - --with-distro=debian
+      - --disable-libevent
+      - --disable-qt4
+      - --disable-qt5
+      - --disable-libdaemon
+      - --disable-python
+      - --disable-mono
+      - --disable-manpages
+    sources:
+      - type: git
+        url: https://github.com/lathiat/avahi
+        tag: v0.8
+        commit: f060abee2807c943821d88839c013ce15db17b58
+  - name: sane
+    buildsystem: autotools
+    sources:
+      - type: git
+        url: https://gitlab.com/sane-project/backends
+        tag: 1.4.0
+        commit: c7e4b5e35e3d614d2b1181d760a717bfc395a203
+      - type: patch
+        path: sane-streamdevices.patch
+  - name: sane-airscan
+    buildsystem: meson
+    sources:
+      - type: git
+        url: https://github.com/alexpevzner/sane-airscan
+        tag: 0.99.37
+        commit: 03eddd0d8058c482462bccabadad0e56e8400cb4
+  - name: main
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/dotnet10/bin
+      append-ld-library-path: /usr/lib/sdk/dotnet10/lib
+      env:
+        PKG_CONFIG_PATH: /app/lib/pkgconfig:/app/share/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/lib/dotnet10/lib/pkgconfig
+        DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+        DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+      arch:
+        aarch64:
+          env:
+            RUNTIME: linux-arm64
+        x86_64:
+          env:
+            RUNTIME: linux-x64
+    build-commands:
+      - mkdir -p /app/bin
+      - dotnet publish NAPS2.App.Gtk -c Release -r $RUNTIME --self-contained /p:DebugType=None /p:DebugSymbols=false --source ./nuget-sources
+      - cp -r --remove-destination /run/build/main/NAPS2.App.Gtk/bin/Release/net10.0/$RUNTIME/publish/. /app/bin/
+      - install -Dm644 NAPS2.Setup/config/linux/com.naps2.Naps2.png /app/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+      - install -Dm644 NAPS2.Setup/config/linux/com.naps2.Naps2.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 NAPS2.Setup/config/linux/com.naps2.Naps2.desktop /app/share/applications/${FLATPAK_ID}.desktop
+    cleanup:
+      - /bin/_linuxarm/tesseract
+      - /bin/_linux/tesseract
+    sources:
+      - type: git
+        url: https://github.com/cyanfish/naps2
+        tag: v8.6.1-flathub
+        commit: 9ed60103479092017e46ef99aeddb7b5cfbf1c77
+      - nuget-sources.json
